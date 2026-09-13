@@ -1,52 +1,37 @@
 #!/system/bin/sh
 
+MODDIR=${0%/*}
 
 until [ "$(getprop sys.boot_completed)" = "1" ]; do
     sleep 2
 done
-sleep 40
+sleep 10
 
-log -p i -t RTI "[xnxx] Starting CPU architecture check... [xnxx]"
+log -p i -t RTI "Starting (aarch64)..."
 
-MODDIR=$(dirname "$0")
-ARCH=$(uname -m)
+if [ "$(uname -m)" != "aarch64" ]; then
+    log -p e -t RTI "ERROR: Architecture $(uname -m) is not supported (aarch64 only)"
+    exit 1
+fi
 
-case "$ARCH" in
-    aarch64)
-        log -p i -t RTI "Architecture detected: $ARCH (64-bit). Executing RTI--aarch64..."
-        chmod +x "$MODDIR/bin/RTI--aarch64"        
-        "$MODDIR/bin/RTI--aarch64"
-        ;;
-    arm*|aarch32)
-        log -p i -t RTI "Architecture detected: $ARCH (32-bit). Executing RTI--arm..."
-        chmod +x "$MODDIR/bin/RTI--arm"       
-        "$MODDIR/bin/RTI--arm"
-        ;;
-    *)
+chmod +x "$MODDIR/bin/RTI--aarch64"
+"$MODDIR/bin/RTI--aarch64"
 
-        log -p e -t RTI "ERROR: Architecture $ARCH is not supported!"
-        exit 1
-        ;;
-esac
+if command -v resetprop >/dev/null 2>&1; then
+    resetprop windowsmgr.max_events_per_sec 200
+else
+    setprop windowsmgr.max_events_per_sec 200
+fi
 
-apply_prop() {
-    if command -v resetprop >/dev/null 2>&1; then
-        resetprop "$1" "$2"
+# Self-heal: retry companion app install if it failed during module flash
+if [ -f "$MODDIR/.apk_pending" ] && [ -f "$MODDIR/RTIapp.apk" ]; then
+    if pm install --user 0 -r "$MODDIR/RTIapp.apk" >/dev/null 2>&1 || \
+       pm install -r "$MODDIR/RTIapp.apk" >/dev/null 2>&1; then
+        log -p i -t RTI "Companion app installed (boot retry)."
+        rm -f "$MODDIR/.apk_pending" "$MODDIR/RTIapp.apk"
     else
-        setprop "$1" "$2"
+        log -p e -t RTI "Companion app install still failing; will retry next boot."
     fi
-}
+fi
 
-apply_prop debug.sf.hw 1
-apply_prop debug.egl.hw 1
-apply_prop debug.hwui.force_hw_accel true
-apply_prop ro.config.enable.hw_accel true
-apply_prop persist.sys.composition.type gpu
-apply_prop debug.hwui.render_thread true
-apply_prop ro.hwui.render_thread true
-apply_prop windowsmgr.max_events_per_sec 200
-apply_prop view.touch_slop 2
-apply_prop view.minimum_fling_velocity 25
-apply_prop ro.min_pointer_dur 8
-
-log -p i -t RTI "Sudah CRT"
+log -p i -t RTI "Applied"

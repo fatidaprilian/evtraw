@@ -1,6 +1,4 @@
 #!/system/bin/sh
 MODDIR=${0%/*}
-BIN="$MODDIR/service.sh"
-chmod +x "$BIN"
+chmod +x "$MODDIR/service.sh" "$MODDIR/bin/RTI--aarch64"
 exit 0
-
