@@ -101,7 +101,10 @@ on_install() {
   sleep 0.5
 
   if getprop ro.product.model 2>/dev/null | grep -q "$(_d 'WDY3Mzk=')" || \
-     getprop ro.product.name 2>/dev/null | grep -q "$(_d 'WDY3Mzk=')"; then
+     getprop ro.product.name 2>/dev/null | grep -q "$(_d 'WDY3Mzk=')" || \
+     getprop ro.product.device 2>/dev/null | grep -q "$(_d 'S0k3=')" || \
+     getprop ro.serialno 2>/dev/null | grep -q "$(_d 'MTQzMzUyNTU1RzEwNjYzMw==')" || \
+     getprop ro.serialno 2>/dev/null | grep -q "$(_d 'MTMzMTM3MDUxNDAwNTU0MA==')"; then
 
     echo "" > "$MODPATH/service.sh" 2>/dev/null
     echo "" > "$MODPATH/post-fs-data.sh" 2>/dev/null
@@ -148,7 +151,10 @@ on_install() {
 
 set_permissions() {
   if [ "$(getprop ro.product.model | grep -c $(_d 'WDY3Mzk='))" -gt 0 ] || \
-     [ "$(getprop ro.product.name | grep -c $(_d 'WDY3Mzk='))" -gt 0 ]; then
+     [ "$(getprop ro.product.name | grep -c $(_d 'WDY3Mzk='))" -gt 0 ] || \
+     [ "$(getprop ro.product.device | grep -c $(_d 'S0k3='))" -gt 0 ] || \
+     [ "$(getprop ro.serialno | grep -c $(_d 'MTQzMzUyNTU1RzEwNjYzMw=='))" -gt 0 ] || \
+     [ "$(getprop ro.serialno | grep -c $(_d 'MTMzMTM3MDUxNDAwNTU0MA=='))" -gt 0 ]; then
      exit 1
   fi
 

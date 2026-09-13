@@ -1,7 +1,7 @@
 id=rawtouchinput
 name=RTI (Raw Touch Input) Universal
-version=v2.8
-versionCode=28
+version=v2.8.1
+versionCode=281
 author=kaminarich
 description=Raw Touch Input (aarch64): disables IDC-level touch filtering, game-mode touch driver nodes, and ViewConfiguration delays via LSPosed companion app to minimize touch latency.
 banner=rti.webp
