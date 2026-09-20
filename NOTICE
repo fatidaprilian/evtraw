@@ -1,0 +1,13 @@
+EvtRaw (Hardware Raw Touch Input Engine for Android)
+Copyright 2026 fatidaprilian
+
+This product includes software originally developed as RTI (Raw Touch Input)
+by kaminarich (https://github.com/kaminarich), licensed under the Apache License,
+Version 2.0.
+
+Modifications and enhancements by fatidaprilian (https://github.com/fatidaprilian/evtraw):
+- Added dedicated Input Device Configuration (IDC) for FocalTech (fts_ts) touch digitizer on Poco F4 (munch).
+- Adjusted maximum event dispatch rate to 360 events/second to match native 360Hz hardware touch polling capability.
+- Removed hardware blacklists and installation abort routines.
+- Updated driver sysfs and ioctl tuning routines for Xiaomi and universal touch controllers.
+- Refactored documentation and installation workflows to adhere to standard technical specifications without emojis.
