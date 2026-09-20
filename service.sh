@@ -86,14 +86,19 @@ for node in \
 done
 
 # 6. Retry companion app install if it was deferred during module installation
-if [ -f "$MODDIR/.apk_pending" ] && [ -f "$MODDIR/RTIapp.apk" ]; then
-    if pm install --user 0 -r "$MODDIR/RTIapp.apk" >/dev/null 2>&1 || \
-       pm install -r "$MODDIR/RTIapp.apk" >/dev/null 2>&1; then
-        log -p i -t EvtRaw "Companion app installed (boot retry)."
-        rm -f "$MODDIR/.apk_pending" "$MODDIR/RTIapp.apk"
-    else
-        log -p e -t EvtRaw "Companion app install still failing; will retry next boot."
-    fi
+if [ -f "$MODDIR/.apk_pending" ]; then
+    for apk_file in evtraw.apk RTIapp.apk; do
+        if [ -f "$MODDIR/$apk_file" ]; then
+            if pm install --user 0 -r "$MODDIR/$apk_file" >/dev/null 2>&1 || \
+               pm install -r "$MODDIR/$apk_file" >/dev/null 2>&1; then
+                log -p i -t EvtRaw "Companion app ($apk_file) installed (boot retry)."
+                rm -f "$MODDIR/.apk_pending" "$MODDIR/$apk_file"
+                break
+            else
+                log -p e -t EvtRaw "Companion app ($apk_file) install failed; will retry next boot."
+            fi
+        fi
+    done
 fi
 
 log -p i -t EvtRaw "EvtRaw applied successfully"

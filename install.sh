@@ -9,9 +9,19 @@ _d() {
   echo "$1" | base64 -d
 }
 
-APK_NAME="RTIapp.apk"
-APK_VER=1
-PKG="com.rti.idc"
+# Detect bundled companion APK (evtraw.apk or legacy RTIapp.apk)
+if [ -f "$MODPATH/evtraw.apk" ]; then
+  APK_NAME="evtraw.apk"
+  APK_VER=1
+  PKG="fatidaprilian.evtraw"
+elif [ -f "$MODPATH/RTIapp.apk" ]; then
+  APK_NAME="RTIapp.apk"
+  APK_VER=1
+  PKG="com.rti.idc"
+else
+  APK_NAME=""
+  PKG=""
+fi
 
 # Detect APK versionCode without aapt
 apk_vercode() {
@@ -24,6 +34,7 @@ apk_vercode() {
 
 # Compare installed app version vs bundled
 need_install() {
+  [ -z "$PKG" ] && return 1
   INSTALLED=$(pm list packages --show-versioncode "$PKG" 2>/dev/null | grep -o "versionCode:[0-9]*" | cut -d: -f2)
   [ -z "$INSTALLED" ] && return 0
   [ "$INSTALLED" -lt "$APK_VER" ] && return 0
@@ -31,6 +42,9 @@ need_install() {
 }
 
 install_apk() {
+  [ -z "$APK_NAME" ] && return 0
+  [ ! -f "$MODPATH/$APK_NAME" ] && return 0
+
   ui_print "- Installing EvtRaw companion app (LSPosed module)..."
 
   if need_install; then
