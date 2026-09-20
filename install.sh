@@ -9,14 +9,12 @@ _d() {
   echo "$1" | base64 -d
 }
 
-# Detect bundled companion APK (evtraw.apk or legacy RTIapp.apk)
-if [ -f "$MODPATH/evtraw.apk" ]; then
+# Detect bundled companion APK in the installation archive
+if unzip -l "$ZIPFILE" 2>/dev/null | grep -qE '[[:space:]]evtraw\.apk$'; then
   APK_NAME="evtraw.apk"
-  APK_VER=1
   PKG="fatidaprilian.evtraw"
-elif [ -f "$MODPATH/RTIapp.apk" ]; then
+elif unzip -l "$ZIPFILE" 2>/dev/null | grep -qE '[[:space:]]RTIapp\.apk$'; then
   APK_NAME="RTIapp.apk"
-  APK_VER=1
   PKG="com.rti.idc"
 else
   APK_NAME=""
@@ -37,7 +35,9 @@ need_install() {
   [ -z "$PKG" ] && return 1
   INSTALLED=$(pm list packages --show-versioncode "$PKG" 2>/dev/null | grep -o "versionCode:[0-9]*" | cut -d: -f2)
   [ -z "$INSTALLED" ] && return 0
-  [ "$INSTALLED" -lt "$APK_VER" ] && return 0
+  BUNDLED_VER=$(apk_vercode "$MODPATH/$APK_NAME")
+  [ -z "$BUNDLED_VER" ] && BUNDLED_VER=1
+  [ "$INSTALLED" -lt "$BUNDLED_VER" ] && return 0
   return 1
 }
 
@@ -45,22 +45,32 @@ install_apk() {
   [ -z "$APK_NAME" ] && return 0
   [ ! -f "$MODPATH/$APK_NAME" ] && return 0
 
+  # Clean up legacy companion package if migrating to evtraw
+  if [ "$PKG" = "fatidaprilian.evtraw" ]; then
+    if pm list packages 2>/dev/null | grep -q "com.rti.idc"; then
+      ui_print "- Migrating from legacy RTI companion..."
+      pm uninstall com.rti.idc >/dev/null 2>&1 || true
+    fi
+  fi
+
   ui_print "- Installing EvtRaw companion app (LSPosed module)..."
 
   if need_install; then
     if pm install --user 0 -r "$MODPATH/$APK_NAME" >/dev/null 2>&1; then
       ui_print "  -> App installed (session installer)."
+      rm -f "$MODPATH/$APK_NAME"
     elif pm install -r "$MODPATH/$APK_NAME" >/dev/null 2>&1; then
       ui_print "  -> App installed (legacy installer)."
+      rm -f "$MODPATH/$APK_NAME"
     else
       ui_print "  -> [!] App install deferred; will retry at boot."
       touch "$MODPATH/.apk_pending"
+      # Retain APK in MODPATH so service.sh can retry at boot
     fi
   else
     ui_print "  -> App is already up-to-date. Skipping install."
+    rm -f "$MODPATH/$APK_NAME"
   fi
-
-  rm -f "$MODPATH/$APK_NAME"
 }
 
 print_modname() {
