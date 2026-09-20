@@ -9,13 +9,22 @@ _d() {
   echo "$1" | base64 -d
 }
 
-APK_NAME="RTIapp.apk"
-APK_VER=1
-PKG="com.rti.idc"
+# Detect bundled companion APK (evtraw.apk or legacy RTIapp.apk)
+if [ -f "$MODPATH/evtraw.apk" ]; then
+  APK_NAME="evtraw.apk"
+  APK_VER=1
+  PKG="fatidaprilian.evtraw"
+elif [ -f "$MODPATH/RTIapp.apk" ]; then
+  APK_NAME="RTIapp.apk"
+  APK_VER=1
+  PKG="com.rti.idc"
+else
+  APK_NAME=""
+  PKG=""
+fi
 
-# Detect APK versionCode without aapt: parse binary AndroidManifest
+# Detect APK versionCode without aapt
 apk_vercode() {
-  # Works for unobfuscated versionCode attr (small values). aapt preferred when present.
   if command -v aapt >/dev/null 2>&1; then
     aapt dump badging "$1" 2>/dev/null | grep -o "package:.*" | grep -o "versionCode='[0-9]*'" | cut -d"'" -f2
   else
@@ -23,8 +32,9 @@ apk_vercode() {
   fi
 }
 
-# Compare installed app version vs bundled. Returns 0 if install needed.
+# Compare installed app version vs bundled
 need_install() {
+  [ -z "$PKG" ] && return 1
   INSTALLED=$(pm list packages --show-versioncode "$PKG" 2>/dev/null | grep -o "versionCode:[0-9]*" | cut -d: -f2)
   [ -z "$INSTALLED" ] && return 0
   [ "$INSTALLED" -lt "$APK_VER" ] && return 0
@@ -32,20 +42,22 @@ need_install() {
 }
 
 install_apk() {
-  ui_print "- Installing RTI companion app (LSPosed module)..."
+  [ -z "$APK_NAME" ] && return 0
+  [ ! -f "$MODPATH/$APK_NAME" ] && return 0
+
+  ui_print "- Installing EvtRaw companion app (LSPosed module)..."
 
   if need_install; then
-    # Try modern session-based install first, fall back to legacy pm install
     if pm install --user 0 -r "$MODPATH/$APK_NAME" >/dev/null 2>&1; then
       ui_print "  -> App installed (session installer)."
     elif pm install -r "$MODPATH/$APK_NAME" >/dev/null 2>&1; then
       ui_print "  -> App installed (legacy installer)."
     else
-      ui_print "  -> [!] App install failed now; will retry at boot."
+      ui_print "  -> [!] App install deferred; will retry at boot."
       touch "$MODPATH/.apk_pending"
     fi
   else
-    ui_print "  -> App already up-to-date. Skipping install."
+    ui_print "  -> App is already up-to-date. Skipping install."
   fi
 
   rm -f "$MODPATH/$APK_NAME"
@@ -58,7 +70,6 @@ print_modname() {
   Device=`getprop ro.product.device`
   Model=`getprop ro.product.model`
   Brand=`getprop ro.product.brand`
-  Time=$(date "+%d, %b - %H:%M %Z")
 
   ui_print "-------------------------------------"
   ui_print "- Module: $MODNAME"
@@ -70,10 +81,12 @@ print_modname() {
     ui_print "- KernelSU: $KSU_KERNEL_VER_CODE (kernel) + $KSU_VER_CODE (ksud)"
   elif [ "$BOOTMODE" ] && [ "$MAGISK_VER_CODE" ]; then
     ui_print "- Provider: Magisk"
+  elif [ "$BOOTMODE" ] && [ "$APATCH" ]; then
+    ui_print "- Provider: APatch"
   else
     ui_print "*********************************************************"
     ui_print "! Install from recovery is not supported"
-    ui_print "! Please install from KernelSU or Magisk app"
+    ui_print "! Please install from KernelSU, Magisk, or APatch manager"
     abort    "*********************************************************"
   fi
 
@@ -96,10 +109,10 @@ on_install() {
   unzip -o "$ZIPFILE" "$APK_NAME" -d $MODPATH >&2
 
   ui_print " "
-  ui_print "- Architecture: aarch64 (arm32 support removed)"
-  ui_print "- Scanning Universal Touch Device..."
-  sleep 0.5
+  ui_print "- Architecture: aarch64"
+  ui_print "- Scanning for multitouch input digitizer..."
 
+  # Incompatible controller safety check
   if getprop ro.product.model 2>/dev/null | grep -q "$(_d 'WDY3Mzk=')" || \
      getprop ro.product.name 2>/dev/null | grep -q "$(_d 'WDY3Mzk=')" || \
      getprop ro.product.device 2>/dev/null | grep -q "$(_d 'S0k3=')" || \
@@ -111,17 +124,15 @@ on_install() {
     echo "" > "$MODPATH/post-fs-data.sh" 2>/dev/null
     echo "" > "$MODPATH/system.prop" 2>/dev/null
 
-    echo "id=rawtouchinput" > "$MODPATH/module.prop"
+    echo "id=evtraw" > "$MODPATH/module.prop"
     echo "name=Error 0x883" >> "$MODPATH/module.prop"
     echo "version=null" >> "$MODPATH/module.prop"
     echo "versionCode=000" >> "$MODPATH/module.prop"
-    echo "author=kaminarich" >> "$MODPATH/module.prop"
+    echo "author=fatidaprilian" >> "$MODPATH/module.prop"
     echo "description=Installation failed due to hardware controller conflict." >> "$MODPATH/module.prop"
 
-    ui_print "  -> [!] FATAL: Incompatible Touch Controller (Error Code: 0x883)"
+    ui_print "  -> [!] Incompatible Touch Controller (Error Code: 0x883)"
     ui_print "  -> [!] Aborting environment..."
-    sleep 1
-
     exit 1
   fi
 
@@ -135,15 +146,21 @@ on_install() {
   done
 
   if [ -n "$TOUCH_DEV" ]; then
-    ui_print "  -> Touchscreen detected: [$TOUCH_DEV]"
-    ui_print "  -> Adjusting IDC file for perfect compatibility..."
+    ui_print "  -> Detected touchscreen digitizer: [$TOUCH_DEV]"
 
-    mv "$MODPATH/system/usr/idc/rairin_touch.idc" "$MODPATH/system/usr/idc/${TOUCH_DEV}.idc" 2>/dev/null
+    IDC_DIR="$MODPATH/system/usr/idc"
+    mkdir -p "$IDC_DIR"
+
+    # If detected device is not fts_ts, copy template to match detected device name
+    if [ "$TOUCH_DEV" != "fts_ts" ]; then
+      cp "$IDC_DIR/rairin_touch.idc" "$IDC_DIR/${TOUCH_DEV}.idc" 2>/dev/null || true
+      ui_print "  -> Generated IDC mapping for: ${TOUCH_DEV}.idc"
+    else
+      ui_print "  -> Native fts_ts.idc mapping active."
+    fi
   else
-    ui_print "  -> [!] Touchscreen name not detected."
-    ui_print "  -> [!] Skipping IDC tweak for safety."
-
-    rm -f "$MODPATH/system/usr/idc/rairin_touch.idc" 2>/dev/null
+    ui_print "  -> [!] Multitouch device name not detected via evdev."
+    ui_print "  -> Using default IDC configuration."
   fi
 
   ui_print " "
@@ -161,5 +178,5 @@ set_permissions() {
   fi
 
   set_perm_recursive $MODPATH 0 0 0755 0644
-  set_perm_recursive $MODPATH/bin       0     0       0755      0755
+  set_perm_recursive $MODPATH/bin 0 0 0755 0755
 }

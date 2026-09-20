@@ -1,4 +1,4 @@
-# EvtRaw Universal Fallback Input Device Configuration
+# EvtRaw Input Device Configuration for FocalTech Touchscreen (fts_ts)
 # Disables Android framework coordinate filtering, geometric pressure scaling, and noise calibration
 touch.deviceType = touchScreen
 touch.orientationAware = 1
