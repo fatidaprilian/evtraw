@@ -1,9 +1,13 @@
+<p align="center">
+  <img src="rti.webp" alt="EvtRaw Banner" width="100%">
+</p>
+
 # EvtRaw: Hardware Raw Touch Input Engine for Android
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Architecture](https://img.shields.io/badge/Architecture-aarch64-green.svg)](module.prop)
 [![Target](https://img.shields.io/badge/Android-8.0_to_14+-orange.svg)](module.prop)
-[![Tested Device](https://img.shields.io/badge/Verified-Poco_F4_(munch)-purple.svg)](README.md)
+[![Framework](https://img.shields.io/badge/Companion-LSPosed-purple.svg)](companion/)
 
 EvtRaw is a system-level touch optimization engine designed to bypass OS-level touch calibration, noise filtering, event throttling, and framework gesture deadbands on Android. 
 
@@ -63,7 +67,7 @@ In standard Android deployments, touch events from the physical digitizer pass t
 ## 5-Layer Bypass Architecture
 
 ### 1. Kernel IRQ Routing & Scheduler Prioritization
-- **Dynamic IRQ Affinity (`smp_affinity`)**: Detects the touch digitizer hardware interrupt line (`fts_ts` at IRQ 395 on Poco F4) and pins it to high-performance cores (Cortex-A77 Gold & Prime cores, bitmask `0xf0`). This prevents Little cores (CPU 0-3 @ 1.8GHz) from handling touch interrupts, eliminating 1-3ms of wake-up and thread scheduling delay.
+- **Dynamic IRQ Affinity (`smp_affinity_list`)**: Detects the touch digitizer hardware interrupt line and binds it to a dedicated high-performance core (preferring Gold/Prime cores like CPU 5 on Snapdragon architectures, with adaptive fallback). This prevents Little cores (CPU 0-3 @ 1.8GHz) from handling touch interrupts, eliminating 1-3ms of wake-up and thread scheduling delay.
 - **EAS Scheduler Foreground Boost (`schedtune` / `uclamp`)**: Bumps `/dev/stune/top-app/schedtune.boost` and enables `prefer_idle` so the active foreground game or UI thread handling touch dispatch is immediately scheduled on an idle performance core without frequency ramping lag.
 
 ### 2. Driver and Vendor Controller Layer
@@ -87,11 +91,12 @@ touch.orientation.calibration = none
 ### 4. Native InputDispatcher Layer
 - Sets `windowsmgr.max_events_per_sec = 360` via `resetprop` to ensure the input channel can dispatch up to 360 raw touch packets per second, matching the hardware capability of modern high-polling screens.
 
-### 5. Framework ViewConfiguration Layer (LSPosed)
-Hooks `android.view.ViewConfiguration` inside application runtimes:
+### 5. Framework ViewConfiguration & VSYNC Bypass (LSPosed)
+Hooks `android.view.ViewConfiguration` and `ViewRootImpl` inside application runtimes:
 - `getScaledTouchSlop()` -> Forced to `2` px. Motion is detected instantly upon the slightest finger movement (down from 22 physical pixels default on 2.75x density).
 - `getTapTimeout()` -> Forced to `15` ms.
 - `getDoubleTapTimeout()` -> Forced to `100` ms.
+- **Smart VSYNC Bypass**: Single-pass runtime detection automatically unbuffers touch dispatch (`consumeBatchedInputEvents(-1L)`) for native games (Unity, Unreal, Godot, Cocos2d-x) while retaining standard batching for UI scrolling.
 
 ---
 
@@ -99,14 +104,13 @@ Hooks `android.view.ViewConfiguration` inside application runtimes:
 
 EvtRaw is architected for `aarch64` Android devices running Android 8.0 through Android 14+.
 
-### Verified Hardware: Poco F4 (munch)
-- **SoC**: Qualcomm Snapdragon 870 (SM8250-AC)
-- **Digitizer IC**: FocalTech Systems (`fts_ts`, `/dev/input/event2`)
-- **Native Hardware Resolution**: 1080x2400 (scaled coordinates: 10800 x 24000)
-- **Physical Sampling Rate**: 360 Hz
-- **Vendor HAL**: `touchfeature-hal-1-0` via `/dev/xiaomi-touch`
+### Supported Architecture
+- **Architecture**: `aarch64` (ARM64)
+- **Platforms**: Qualcomm Snapdragon, MediaTek Dimensity, and modern ARM SoCs
+- **Digitizer Controllers**: FocalTech (`fts_ts`), Novatek (`nt36xxx`), Goodix (`goodix_ts`), Synaptics, and standard Linux multitouch controllers
+- **Display Rates**: Compatible with 60Hz, 90Hz, 120Hz, 144Hz, and up to 360Hz+ touch sampling rates
 
-### Universal Support
+### Universal Digitizer Scanning
 The module dynamically queries the Linux `evdev` subsystem (`/dev/input/event*`) at installation time. Any touchscreen supporting standard multitouch axes (`ABS_MT_POSITION_X`) receives an automated IDC profile.
 
 ---
@@ -122,8 +126,8 @@ The module dynamically queries the Linux `evdev` subsystem (`/dev/input/event*`)
 2. Open your Root Manager (Magisk / KernelSU / APatch).
 3. Navigate to Modules, select **Install from storage**, and select the zip file.
 4. Reboot the device.
-5. Open the LSPosed Manager notification, enable the **EvtRaw** companion module (`com.rti.idc`), and ensure the System Framework target is checked.
-6. Reboot once more to apply all runtime hooks.
+5. Open the LSPosed Manager notification, enable the **EvtRaw** companion module (`fatidaprilian.evtraw`), and select your desired game applications in the scope list.
+6. Launch your games to apply all runtime hooks.
 
 ---
 
@@ -136,7 +140,7 @@ Swipe continuously across the screen while monitoring evdev timestamps:
 ```bash
 getevent -r -t /dev/input/eventX
 ```
-*(Replace `eventX` with your touch node, e.g., `/dev/input/event2` on Poco F4)*. Event rate should reach between 300Hz and 360Hz during active dragging.
+*(Replace `eventX` with your touch node, e.g., `/dev/input/event2`)*. Event rate should reach between 300Hz and 360Hz during active dragging.
 
 ### 2. Verify IDC Calibration Bypass
 Check active `InputReader` mapper status:
@@ -148,11 +152,11 @@ Confirm that `Calibration:` parameters for size, pressure, and distance are list
 ### 3. Verify LSPosed Framework Hook
 Inspect the Xposed runtime log:
 ```bash
-logcat -d -s XposedBridge | grep -i "RTI"
+logcat -d -s XposedBridge | grep -i "EvtRaw"
 ```
 Expected output:
 ```
-RTI: ViewConfiguration hooks installed (touchSlop=2, tapTimeout=15, doubleTapTimeout=100)
+EvtRaw: [com.mobile.legends] native game engine detected -> unbuffered VSYNC bypass ENABLED
 ```
 
 ---
@@ -192,9 +196,9 @@ This project is licensed under the **Apache License 2.0**. See the [LICENSE](LIC
 
 - **Original Project**: RTI (Raw Touch Input) by [kaminarich](https://github.com/kaminarich).
 - **Modifications & Maintenance**: [fatidaprilian](https://github.com/fatidaprilian/evtraw).
-  - Dedicated support and mapping for FocalTech (`fts_ts`) on Poco F4 (`munch`).
+  - Dedicated support and calibration for FocalTech (`fts_ts`) and universal aarch64 digitizers.
   - Raised dispatch frequency limits to 360Hz.
-  - Eliminated proprietary hardware locks and installation abort routines.
+  - Retained hardware compatibility safety checks while streamlining installation workflow.
   - Open-sourced companion LSPosed hook in `companion/` with single-pass native engine VSYNC bypass.
   - Reconstructed technical documentation and telemetry configurations.
 

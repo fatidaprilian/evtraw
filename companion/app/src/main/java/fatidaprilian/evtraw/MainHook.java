@@ -27,8 +27,8 @@ public class MainHook implements IXposedHookLoadPackage {
         // Stage 1: Universal ViewConfiguration Tuning (Safe for all apps in scope)
         hookViewConfiguration(lpparam.classLoader);
 
-        // Stage 2: Single-pass Native Game Engine Detection
-        boolean isNativeGame = detectNativeGameEngine(lpparam.classLoader);
+        // Stage 2: Single-pass Game Detection (Category inspection & engine classes)
+        boolean isNativeGame = isGamePackage(lpparam);
 
         if (isNativeGame) {
             // Stage 3: Direct Unbuffered Touch Dispatch (Bypass VSYNC buffering)
@@ -37,6 +37,42 @@ public class MainHook implements IXposedHookLoadPackage {
         } else {
             XposedBridge.log(TAG + ": [" + lpparam.packageName + "] standard view hierarchy -> VSYNC batching retained for smooth scrolling");
         }
+    }
+
+    /**
+     * Identifies games via ApplicationInfo category or third-party native game engine runtimes.
+     * Evaluated strictly once during package load; zero runtime overhead during frame loops.
+     */
+    private boolean isGamePackage(XC_LoadPackage.LoadPackageParam lpparam) {
+        if (lpparam.appInfo != null) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                if (lpparam.appInfo.category == android.content.pm.ApplicationInfo.CATEGORY_GAME) {
+                    return true;
+                }
+            }
+            if ((lpparam.appInfo.flags & android.content.pm.ApplicationInfo.FLAG_IS_GAME) != 0) {
+                return true;
+            }
+        }
+
+        // Check for dedicated third-party native game engines
+        String[] engineClasses = new String[] {
+            "com.unity3d.player.UnityPlayer",              // Unity (Mobile Legends, Genshin, Wild Rift)
+            "com.epicgames.ue4.GameActivity",              // Unreal Engine 4 (PUBG Mobile, Fortnite)
+            "com.epicgames.unreal.GameActivity",           // Unreal Engine 5
+            "org.godotengine.godot.Godot",                 // Godot Engine
+            "org.cocos2dx.lib.Cocos2dxActivity"            // Cocos2d-x Engine
+        };
+
+        for (String className : engineClasses) {
+            try {
+                Class.forName(className, false, lpparam.classLoader);
+                return true;
+            } catch (ClassNotFoundException ignored) {
+                // Class not found in target package, continue searching
+            }
+        }
+        return false;
     }
 
     /**
@@ -64,25 +100,6 @@ public class MainHook implements IXposedHookLoadPackage {
             XposedBridge.log(TAG + ": Failed to hook ViewConfiguration: " + t.getMessage());
         }
     }
-
-    /**
-     * Checks class existence in the application classloader to identify native rendering game engines.
-     * Evaluated strictly once during package load; zero runtime overhead during frame loops.
-     */
-    private boolean detectNativeGameEngine(ClassLoader cl) {
-        String[] engineClasses = new String[] {
-            "com.unity3d.player.UnityPlayer",              // Unity (Mobile Legends, Genshin, Wild Rift)
-            "com.epicgames.ue4.GameActivity",              // Unreal Engine 4 (PUBG Mobile, Fortnite)
-            "com.epicgames.unreal.GameActivity",           // Unreal Engine 5
-            "android.app.NativeActivity",                  // Android Native C/C++ Activity
-            "org.godotengine.godot.Godot",                 // Godot Engine
-            "org.cocos2dx.lib.Cocos2dxActivity"            // Cocos2d-x Engine
-        };
-
-        for (String className : engineClasses) {
-            try {
-                Class.forName(className, false, cl);
-                return true;
             } catch (ClassNotFoundException ignored) {
                 // Class not found in target package, continue searching
             }
