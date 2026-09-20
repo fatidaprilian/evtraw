@@ -1,7 +1,7 @@
 id=evtraw
 name=EvtRaw (Raw Touch Input Engine)
-version=v1.0.1
-versionCode=101
+version=v1.0.2
+versionCode=102
 author=fatidaprilian (original by kaminarich)
 description=Raw Touch Input (aarch64): disables IDC-level touch filtering, tunes kernel touch driver modes via ioctl/sysfs, and minimizes ViewConfiguration delays to deliver unthrottled hardware touch response.
 banner=rti.webp
