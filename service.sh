@@ -47,8 +47,9 @@ if command -v resetprop >/dev/null 2>&1; then
     resetprop -n ro.input.resampling 0
     resetprop -n ro.vendor.display.touch.idle.enable false
 else
-    setprop ro.input.resampling 0
-    setprop ro.vendor.display.touch.idle.enable false
+    # Read-only properties (ro.*) cannot be modified via setprop at runtime;
+    # on systems without resetprop, they are applied at boot via system.prop
+    log -p w -t EvtRaw "resetprop unavailable; ro.input.resampling must be supplied by system.prop" 2>/dev/null || true
 fi
 
 # 4. Direct Vendor Sysfs Fallback Writes

@@ -33,10 +33,13 @@ In standard Android deployments, touch events from the physical digitizer pass t
         │  (IDC calibration: applies geometric pressure/size scaling and coordinate filtering)
         ▼
 [Android InputDispatcher] (system_server)
+        │  (Routes raw touch events to the focused window channel without throttling)
+        ▼
+[InputChannel Socket] -> [Android InputConsumer / InputTransport] (App Process)
         │  (Native Resampling in InputTransport.cpp: applies 5ms RESAMPLE_LATENCY linear interpolation)
         ▼
-[InputChannel Socket] -> [Android InputConsumer] (App Process)
-        │  (Choreographer VSYNC Batching in ViewRootImpl: buffers events until the next display frame tick)
+[ViewRootImpl / Choreographer] (App Process)
+        │  (VSYNC Batching: buffers events until the next display frame tick)
         ▼
 [ViewConfiguration] (View Hierarchy)
         │  (Delays event dispatch until finger moves beyond touchSlop: default 8-16 dp)
