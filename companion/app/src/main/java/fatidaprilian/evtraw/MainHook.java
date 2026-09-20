@@ -116,6 +116,11 @@ public class MainHook implements IXposedHookLoadPackage {
                             try {
                                 // -1L consumes all batched input events immediately without resampling
                                 XposedHelpers.callMethod(param.thisObject, "doConsumeBatchedInput", -1L);
+                                try {
+                                    XposedHelpers.setBooleanField(param.thisObject, "mUnbufferedInputDispatch", true);
+                                } catch (Throwable ignored) {
+                                    // Field not present on older Android versions; -1L already drains unbuffered
+                                }
                                 param.setResult(null); // Prevent scheduling Choreographer VSYNC callback
                             } catch (Throwable inner) {
                                 // Graceful fallback: let default scheduleConsumeBatchedInput proceed
