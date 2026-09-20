@@ -21,26 +21,6 @@ else
   PKG=""
 fi
 
-# Detect APK versionCode without aapt
-apk_vercode() {
-  if command -v aapt >/dev/null 2>&1; then
-    aapt dump badging "$1" 2>/dev/null | grep -o "package:.*" | grep -o "versionCode='[0-9]*'" | cut -d"'" -f2
-  else
-    strings "$1" 2>/dev/null | grep -o "versionCode=[0-9]*" | head -n1 | cut -d= -f2
-  fi
-}
-
-# Compare installed app version vs bundled
-need_install() {
-  [ -z "$PKG" ] && return 1
-  INSTALLED=$(pm list packages --show-versioncode "$PKG" 2>/dev/null | grep -o "versionCode:[0-9]*" | cut -d: -f2)
-  [ -z "$INSTALLED" ] && return 0
-  BUNDLED_VER=$(apk_vercode "$MODPATH/$APK_NAME")
-  [ -z "$BUNDLED_VER" ] && BUNDLED_VER=1
-  [ "$INSTALLED" -lt "$BUNDLED_VER" ] && return 0
-  return 1
-}
-
 install_apk() {
   [ -z "$APK_NAME" ] && return 0
   [ ! -f "$MODPATH/$APK_NAME" ] && return 0
@@ -55,21 +35,28 @@ install_apk() {
 
   ui_print "- Installing EvtRaw companion app (LSPosed module)..."
 
-  if need_install; then
-    if pm install --user 0 -r "$MODPATH/$APK_NAME" >/dev/null 2>&1; then
-      ui_print "  -> App installed (session installer)."
-      rm -f "$MODPATH/$APK_NAME"
-    elif pm install -r "$MODPATH/$APK_NAME" >/dev/null 2>&1; then
-      ui_print "  -> App installed (legacy installer)."
-      rm -f "$MODPATH/$APK_NAME"
-    else
-      ui_print "  -> [!] App install deferred; will retry at boot."
-      touch "$MODPATH/.apk_pending"
-      # Retain APK in MODPATH so service.sh can retry at boot
-    fi
-  else
-    ui_print "  -> App is already up-to-date. Skipping install."
+  # Attempt direct installation/upgrade
+  if pm install --user 0 -r "$MODPATH/$APK_NAME" >/dev/null 2>&1 || \
+     pm install -r "$MODPATH/$APK_NAME" >/dev/null 2>&1; then
+    ui_print "  -> App installed successfully."
     rm -f "$MODPATH/$APK_NAME"
+  else
+    # Check if failed due to signature mismatch from a previously installed build
+    if [ -n "$PKG" ] && pm list packages 2>/dev/null | grep -q "$PKG"; then
+      ui_print "  -> [!] Signature conflict detected with existing app."
+      ui_print "  -> Clean reinstalling companion app..."
+      pm uninstall "$PKG" >/dev/null 2>&1 || pm uninstall --user 0 "$PKG" >/dev/null 2>&1
+      if pm install --user 0 -r "$MODPATH/$APK_NAME" >/dev/null 2>&1 || \
+         pm install -r "$MODPATH/$APK_NAME" >/dev/null 2>&1; then
+        ui_print "  -> App reinstalled successfully."
+        rm -f "$MODPATH/$APK_NAME"
+        return 0
+      fi
+    fi
+
+    ui_print "  -> [!] App install deferred; will retry at boot."
+    touch "$MODPATH/.apk_pending"
+    # Retain APK in MODPATH so service.sh can retry at boot
   fi
 }
 

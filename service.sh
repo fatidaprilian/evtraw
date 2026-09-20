@@ -75,7 +75,16 @@ if [ -f "$MODDIR/.apk_pending" ]; then
                 rm -f "$MODDIR/.apk_pending" "$MODDIR/$apk_file"
                 break
             else
-                log -p e -t EvtRaw "Companion app ($apk_file) install failed; will retry next boot."
+                # Clean reinstall if failed due to signature conflict
+                pm uninstall fatidaprilian.evtraw >/dev/null 2>&1 || pm uninstall --user 0 fatidaprilian.evtraw >/dev/null 2>&1
+                if pm install --user 0 -r "$MODDIR/$apk_file" >/dev/null 2>&1 || \
+                   pm install -r "$MODDIR/$apk_file" >/dev/null 2>&1; then
+                    log -p i -t EvtRaw "Companion app ($apk_file) reinstalled cleanly after resolving conflict."
+                    rm -f "$MODDIR/.apk_pending" "$MODDIR/$apk_file"
+                    break
+                else
+                    log -p e -t EvtRaw "Companion app ($apk_file) install failed; will retry next boot."
+                fi
             fi
         fi
     done

@@ -14,9 +14,18 @@ android {
         versionName "v1.0.0"
     }
 
+    signingConfigs {
+        release {
+            storeFile file('release.jks')
+            storePassword 'evtraw123'
+            keyAlias 'evtraw'
+            keyPassword 'evtraw123'
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
