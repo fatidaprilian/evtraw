@@ -51,19 +51,20 @@ jobs:
           file_pattern: "module.prop update.json companion/app/build.gradle"
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.5'
 
       - name: Build EvtRaw Companion APK
         run: |
           cd companion
-          chmod +x gradlew
-          ./gradlew assembleRelease
+          gradle assembleRelease --stacktrace --no-daemon
           cd ..
           cp companion/app/build/outputs/apk/release/app-release.apk ./evtraw.apk
           rm -f ./RTIapp.apk
@@ -73,7 +74,7 @@ jobs:
           zip -r9 evtraw-${{ github.event.inputs.version }}.zip . -x "*.git*" -x ".github/*" -x "*.zip" -x "companion/*"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version }}
           name: EvtRaw ${{ github.event.inputs.version }}

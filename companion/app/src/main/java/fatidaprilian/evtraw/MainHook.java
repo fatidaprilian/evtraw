@@ -100,12 +100,6 @@ public class MainHook implements IXposedHookLoadPackage {
             XposedBridge.log(TAG + ": Failed to hook ViewConfiguration: " + t.getMessage());
         }
     }
-            } catch (ClassNotFoundException ignored) {
-                // Class not found in target package, continue searching
-            }
-        }
-        return false;
-    }
 
     /**
      * Bypasses Choreographer VSYNC delay for touch dispatch.
