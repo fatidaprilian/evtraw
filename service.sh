@@ -26,12 +26,14 @@ fi
 # Identify touch digitizer interrupt (e.g. fts_ts on Poco F4)
 TS_IRQ=$(grep -E 'fts_ts|xiaomi-touch' /proc/interrupts 2>/dev/null | head -n1 | awk '{print $1}' | tr -d ':')
 if [ -n "$TS_IRQ" ] && [ -d "/proc/irq/$TS_IRQ" ]; then
-    # Route touch interrupts to performance cluster (Cortex-A77 Gold/Prime cores 4-7, mask 0xf0)
-    # If 0xf0 is rejected by kernel affinity restrictions, fallback to 0x70 or 0x30
-    if echo "f0" > "/proc/irq/$TS_IRQ/smp_affinity" 2>/dev/null; then
-        log -p i -t EvtRaw "Bound touch IRQ $TS_IRQ to performance cores (affinity 0xf0)"
-    elif echo "70" > "/proc/irq/$TS_IRQ/smp_affinity" 2>/dev/null; then
-        log -p i -t EvtRaw "Bound touch IRQ $TS_IRQ to Gold cores (affinity 0x70)"
+    # Qualcomm msmgpio controller restricts affinity to a single core (rejects multi-core masks).
+    # Target Cortex-A77 Gold Core 4 (bitmask 0x10 or CPU 4) or Prime Core 7 (0x80 or CPU 7)
+    if echo "4" > "/proc/irq/$TS_IRQ/smp_affinity_list" 2>/dev/null || \
+       echo "10" > "/proc/irq/$TS_IRQ/smp_affinity" 2>/dev/null; then
+        log -p i -t EvtRaw "Bound touch IRQ $TS_IRQ to Gold core 4 (affinity 0x10)"
+    elif echo "7" > "/proc/irq/$TS_IRQ/smp_affinity_list" 2>/dev/null || \
+         echo "80" > "/proc/irq/$TS_IRQ/smp_affinity" 2>/dev/null; then
+        log -p i -t EvtRaw "Bound touch IRQ $TS_IRQ to Prime core 7 (affinity 0x80)"
     fi
 fi
 
