@@ -1,1 +1,5 @@
-windowsmgr.max_events_per_sec=200
+# EvtRaw System Properties
+# Unthrottle event dispatcher to match 360Hz hardware sampling rate
+windowsmgr.max_events_per_sec=360
+# Prevent vendor touch driver from dropping into idle downscaled sampling rates
+ro.vendor.display.touch.idle.enable=false
