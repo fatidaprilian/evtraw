@@ -26,15 +26,21 @@ fi
 # Identify touch digitizer interrupt (e.g. fts_ts on Poco F4)
 TS_IRQ=$(grep -E 'fts_ts|xiaomi-touch' /proc/interrupts 2>/dev/null | head -n1 | awk '{print $1}' | tr -d ':')
 if [ -n "$TS_IRQ" ] && [ -d "/proc/irq/$TS_IRQ" ]; then
-    # Qualcomm msmgpio controller restricts affinity to a single core (rejects multi-core masks).
-    # Target Cortex-A77 Gold Core 4 (bitmask 0x10 or CPU 4) or Prime Core 7 (0x80 or CPU 7)
-    if echo "4" > "/proc/irq/$TS_IRQ/smp_affinity_list" 2>/dev/null || \
-       echo "10" > "/proc/irq/$TS_IRQ/smp_affinity" 2>/dev/null; then
-        log -p i -t EvtRaw "Bound touch IRQ $TS_IRQ to Gold core 4 (affinity 0x10)"
-    elif echo "7" > "/proc/irq/$TS_IRQ/smp_affinity_list" 2>/dev/null || \
-         echo "80" > "/proc/irq/$TS_IRQ/smp_affinity" 2>/dev/null; then
-        log -p i -t EvtRaw "Bound touch IRQ $TS_IRQ to Prime core 7 (affinity 0x80)"
-    fi
+    CURRENT_CORE=$(cat "/proc/irq/$TS_IRQ/smp_affinity_list" 2>/dev/null)
+    case "$CURRENT_CORE" in
+        4|5|6|7)
+            log -p i -t EvtRaw "Touch IRQ $TS_IRQ already on performance core (CPU $CURRENT_CORE)"
+            ;;
+        *)
+            # If on Little core (0-3), migrate to Gold core (prefer CPU 5 which kernel accepted, then 4, 6, 7)
+            for target_core in 5 4 6 7; do
+                if echo "$target_core" > "/proc/irq/$TS_IRQ/smp_affinity_list" 2>/dev/null; then
+                    log -p i -t EvtRaw "Bound touch IRQ $TS_IRQ to performance core (CPU $target_core)"
+                    break
+                fi
+            done
+            ;;
+    esac
 fi
 
 # 3. Energy-Aware Scheduler (EAS) Foreground Touch Responsiveness Tuning
