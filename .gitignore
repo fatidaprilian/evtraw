@@ -1,1 +1,11 @@
 *.zip
+*.apk
+
+# Gradle build directories
+.gradle/
+build/
+companion/.gradle/
+companion/build/
+companion/app/build/
+local.properties
+

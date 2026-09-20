@@ -174,7 +174,11 @@ evtraw/
 ├── NOTICE                   # Apache 2.0 attribution notices
 ├── LICENSE                  # Apache License 2.0 text
 ├── post-fs-data.sh          # Early boot permission script
-├── RTIapp.apk               # LSPosed companion application
+├── companion/               # Open-source LSPosed companion app (Android Gradle project)
+│   ├── app/src/main/
+│   │   ├── AndroidManifest.xml # LSPosed scope metadata
+│   │   └── java/.../MainHook.java # ViewConfiguration tuning & native engine VSYNC bypass
+├── evtraw.apk               # Compiled LSPosed companion app (auto-built via CI/CD)
 ├── service.sh               # Late-start daemon tuning script
 ├── system.prop              # Event dispatcher system properties
 └── uninstall.sh             # Clean state restoration script
@@ -191,6 +195,7 @@ This project is licensed under the **Apache License 2.0**. See the [LICENSE](LIC
   - Dedicated support and mapping for FocalTech (`fts_ts`) on Poco F4 (`munch`).
   - Raised dispatch frequency limits to 360Hz.
   - Eliminated proprietary hardware locks and installation abort routines.
+  - Open-sourced companion LSPosed hook in `companion/` with single-pass native engine VSYNC bypass.
   - Reconstructed technical documentation and telemetry configurations.
 
 All trademarks, device names, and brand names are the property of their respective owners.
