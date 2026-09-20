@@ -114,6 +114,11 @@ public class MainHook implements IXposedHookLoadPackage {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                             try {
+                                try {
+                                    XposedHelpers.setBooleanField(param.thisObject, "mUnbufferedInputDispatch", true);
+                                } catch (Throwable ignored) {
+                                    // Field not present on older Android versions; -1L already drains unbuffered
+                                }
                                 // -1L consumes all batched input events immediately without resampling
                                 XposedHelpers.callMethod(param.thisObject, "doConsumeBatchedInput", -1L);
                                 param.setResult(null); // Prevent scheduling Choreographer VSYNC callback

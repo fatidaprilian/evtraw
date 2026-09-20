@@ -9,9 +9,9 @@
 [![Target](https://img.shields.io/badge/Android-8.0_to_14+-orange.svg)](module.prop)
 [![Framework](https://img.shields.io/badge/Companion-LSPosed-purple.svg)](companion/)
 
-EvtRaw is a system-level touch optimization engine designed to bypass OS-level touch calibration, noise filtering, event throttling, and framework gesture deadbands on Android. 
+EvtRaw is a system-level touch optimization engine designed to bypass OS-level touch calibration, native resampling delay, VSYNC event batching, and framework gesture deadbands on Android. 
 
-By mirroring the concept of Windows `WM_INPUT` (Raw Input), EvtRaw delivers unthrottled hardware touch reports directly to the application layer with sub-pixel sensitivity and zero artificial dispatch lag.
+By mirroring the concept of Windows `WM_INPUT` (Raw Input), EvtRaw delivers unbuffered hardware touch reports directly to the application layer with minimal software latency and sub-pixel sensitivity.
 
 ---
 
@@ -33,10 +33,13 @@ In standard Android deployments, touch events from the physical digitizer pass t
         │  (IDC calibration: applies geometric pressure/size scaling and coordinate filtering)
         ▼
 [Android InputDispatcher] (system_server)
-        │  (Throttled by windowsmgr.max_events_per_sec; default 60-120 Hz)
+        │  (Routes raw touch events to the focused window channel without throttling)
         ▼
-[InputChannel Socket] -> [Android InputConsumer] (App Process)
-        │  (Input Resampling: events are held and interpolated to sync with display VSYNC)
+[InputChannel Socket] -> [Android InputConsumer / InputTransport] (App Process)
+        │  (Native Resampling in InputTransport.cpp: applies 5ms RESAMPLE_LATENCY linear interpolation)
+        ▼
+[ViewRootImpl / Choreographer] (App Process)
+        │  (VSYNC Batching: buffers events until the next display frame tick)
         ▼
 [ViewConfiguration] (View Hierarchy)
         │  (Delays event dispatch until finger moves beyond touchSlop: default 8-16 dp)
@@ -46,8 +49,8 @@ In standard Android deployments, touch events from the physical digitizer pass t
 
 ### Why Default Android Touch Feels Delayed
 1. **IDC Calibration & Filtering**: `TouchInputMapper` normalizes raw hardware coordinates using synthetic geometric calibration curves.
-2. **Event Dispatch Throttling**: The native `InputDispatcher` drops or caps events per second if they exceed the system event rate ceiling.
-3. **VSYNC Batching (Project Butter)**: Android intentionally delays raw touch reports to interpolate them into the display refresh cycle.
+2. **Native Resampling Interpolation**: `InputTransport.cpp` applies a hardcoded 5ms `RESAMPLE_LATENCY` linear interpolation filter to smooth coordinates, which delays raw packet delivery to application processes.
+3. **VSYNC Batching (Project Butter)**: `ViewRootImpl` intentionally holds back touch reports in `mBatchedInputEventReceiver` until the next display Choreographer VSYNC pulse.
 4. **Touch Slop Deadbands**: `ViewConfiguration` forces the system to wait for a finger to travel 8 to 16 density-independent pixels before registering a scroll or motion event.
 
 ---
@@ -56,11 +59,12 @@ In standard Android deployments, touch events from the physical digitizer pass t
 
 | Stage | Default Android Pipeline | Windows Raw Input Equivalent | EvtRaw Engine |
 | :--- | :--- | :--- | :--- |
-| **Driver** | Power-saving sampling (120-180Hz) | Device Driver Queue | Full 360Hz hardware report rate unlocked via vendor ioctl |
+| **Driver** | Power-saving sampling downclocking | Device Driver Queue | Native 360Hz hardware report rate (e.g., Poco F4 `fts_ts`) maintained via vendor ioctl & idle suppression |
 | **Calibration** | Coordinate smoothing & pressure curves | Cursor ballistics & acceleration | Disabled (`touch.*.calibration = none`) |
-| **Dispatch** | Throttled (default 60-120 events/sec) | Coalesced in `WM_MOUSEMOVE` | Uncapped to 360 events/sec (`max_events_per_sec = 360`) |
+| **Native Resampling** | 5ms linear interpolation (`RESAMPLE_LATENCY` in `InputTransport.cpp`) | Direct raw packet stream | Bypassed via `ro.input.resampling=0` |
+| **VSYNC Batching** | Buffered to Choreographer frame tick (~8.3ms-16.6ms) | Unbuffered message loop | Immediate unbuffered dispatch via LSPosed `ViewRootImpl` hook (`consumeBatchedInputEvents(-1L)`) |
 | **Deadband** | 8dp - 16dp touch slop (~24-48px) | Windows threshold deadzone | Reduced to 2px via LSPosed companion hook |
-| **Tap Delay** | 100ms tap timeout | Standard click timeout | Reduced to 15ms via ViewConfiguration hook |
+| **Tap Delay** | 100ms tap timeout | Standard click timeout | Reduced to 15ms via `ViewConfiguration` hook |
 
 ---
 
@@ -87,15 +91,15 @@ touch.distance.calibration = none
 touch.orientation.calibration = none
 ```
 
-### 4. Native InputDispatcher Layer
-- Sets `windowsmgr.max_events_per_sec = 360` via `resetprop` to ensure the input channel can dispatch up to 360 raw touch packets per second, matching the hardware capability of modern high-polling screens.
+### 4. Native InputTransport & Resampling Bypass Layer
+- Sets `ro.input.resampling=0` via `resetprop` and `system.prop` to disable native touch resampling in `libinput.so` (`frameworks/native/libs/input/InputTransport.cpp`). This eliminates the hardcoded 5ms `RESAMPLE_LATENCY` linear interpolation filter across all processes (Java, Unity, Unreal, Flutter) with zero CPU overhead.
 
 ### 5. Framework ViewConfiguration & VSYNC Bypass (LSPosed)
 Hooks `android.view.ViewConfiguration` and `ViewRootImpl` inside application runtimes:
-- `getScaledTouchSlop()` -> Forced to `2` px. Motion is detected instantly upon the slightest finger movement (down from 22 physical pixels default on 2.75x density).
+- `getScaledTouchSlop()` -> Forced to `2` px. Motion is detected immediately upon minimal finger travel (down from 22 physical pixels default on 2.75x density).
 - `getTapTimeout()` -> Forced to `15` ms.
 - `getDoubleTapTimeout()` -> Forced to `100` ms.
-- **Smart VSYNC Bypass**: Single-pass runtime detection automatically unbuffers touch dispatch (`consumeBatchedInputEvents(-1L)`) for native games (Unity, Unreal, Godot, Cocos2d-x) while retaining standard batching for UI scrolling.
+- **Smart VSYNC Bypass**: Single-pass runtime detection automatically unbuffers touch dispatch (`consumeBatchedInputEvents(-1L)` and `mUnbufferedInputDispatch = true`) for native games (Unity, Unreal, Godot, Cocos2d-x) while retaining standard batching for UI scrolling.
 
 ---
 
@@ -139,16 +143,23 @@ Swipe continuously across the screen while monitoring evdev timestamps:
 ```bash
 getevent -r -t /dev/input/eventX
 ```
-*(Replace `eventX` with your touch node, e.g., `/dev/input/event2`)*. Event rate should reach between 300Hz and 360Hz during active dragging.
+*(Replace `eventX` with your touch node, e.g., `/dev/input/event2`)*. Event rate should reach between 300Hz and 360Hz during active dragging on supported 360Hz digitizers (e.g. Poco F4 `fts_ts`).
 
-### 2. Verify IDC Calibration Bypass
+### 2. Verify Native Resampling Bypass
+Verify that native touch resampling interpolation is disabled:
+```bash
+getprop ro.input.resampling
+```
+Expected output: `0`.
+
+### 3. Verify IDC Calibration Bypass
 Check active `InputReader` mapper status:
 ```bash
 dumpsys input | grep -A 25 "Touch Input Mapper"
 ```
 Confirm that `Calibration:` parameters for size, pressure, and distance are listed as `none`.
 
-### 3. Verify LSPosed Framework Hook
+### 4. Verify LSPosed Framework Hook
 Inspect the Xposed runtime log:
 ```bash
 logcat -d -s XposedBridge | grep -i "EvtRaw"
@@ -157,6 +168,10 @@ Expected output:
 ```
 EvtRaw: [com.mobile.legends] native game engine detected -> unbuffered VSYNC bypass ENABLED
 ```
+
+### 5. Empirical Latency & Tracking Verification
+- **Developer Options -> Pointer Location**: Turn on Pointer Location in Android Developer Options. Draw quick strokes across the screen. Notice the dense point cloud and immediate update of coordinate delta, pressure, and size without lag or synthetic curve rounding.
+- **High-Speed Camera (Optional)**: Record touch interaction at 240fps or 960fps slow-motion to empirically observe the reduction in finger-to-action motion lag compared to stock OS configuration.
 
 ---
 
@@ -181,6 +196,8 @@ evtraw/
 │   ├── app/src/main/
 │   │   ├── AndroidManifest.xml # LSPosed scope metadata
 │   │   └── java/.../MainHook.java # ViewConfiguration tuning & native engine VSYNC bypass
+│   ├── gradle/
+│   └── build.gradle
 ├── evtraw.apk               # Compiled LSPosed companion app (auto-built via CI/CD)
 ├── service.sh               # Late-start daemon tuning script
 ├── system.prop              # Event dispatcher system properties
@@ -196,9 +213,9 @@ This project is licensed under the **Apache License 2.0**. See the [LICENSE](LIC
 - **Original Project**: RTI (Raw Touch Input) by [kaminarich](https://github.com/kaminarich).
 - **Modifications & Maintenance**: [fatidaprilian](https://github.com/fatidaprilian/evtraw).
   - Dedicated support and calibration for FocalTech (`fts_ts`) and universal aarch64 digitizers.
-  - Raised dispatch frequency limits to 360Hz.
+  - Native AOSP touch resampling bypass (`ro.input.resampling=0`) eliminating 5ms `libinput` interpolation delay.
   - Retained hardware compatibility safety checks while streamlining installation workflow.
   - Open-sourced companion LSPosed hook in `companion/` with single-pass native engine VSYNC bypass.
-  - Reconstructed technical documentation and telemetry configurations.
+  - Reconstructed technical documentation, empirical diagnostics, and telemetry configurations.
 
 All trademarks, device names, and brand names are the property of their respective owners.

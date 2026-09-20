@@ -42,13 +42,14 @@ for uclamp_node in /dev/cpuctl/top-app/cpu.uclamp.min; do
     fi
 done
 
-# 3. System Properties for Unthrottled Dispatch & Idle Prevention
+# 3. System Properties for Native Resampling Bypass & Idle Prevention
 if command -v resetprop >/dev/null 2>&1; then
-    resetprop windowsmgr.max_events_per_sec 360
-    resetprop ro.vendor.display.touch.idle.enable false
+    resetprop -n ro.input.resampling 0
+    resetprop -n ro.vendor.display.touch.idle.enable false
 else
-    setprop windowsmgr.max_events_per_sec 360
-    setprop ro.vendor.display.touch.idle.enable false
+    # Read-only properties (ro.*) cannot be modified via setprop at runtime;
+    # on systems without resetprop, they are applied at boot via system.prop
+    log -p w -t EvtRaw "resetprop unavailable; ro.input.resampling must be supplied by system.prop" 2>/dev/null || true
 fi
 
 # 4. Direct Vendor Sysfs Fallback Writes
