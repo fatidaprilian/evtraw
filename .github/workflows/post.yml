@@ -51,9 +51,26 @@ jobs:
           commit_message: "chore: update version to ${{ github.event.inputs.version }}"
           file_pattern: "module.prop update.json"
 
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build EvtRaw Companion APK
+        run: |
+          cd companion
+          gradle assembleRelease || ./gradlew assembleRelease
+          cd ..
+          cp companion/app/build/outputs/apk/release/*.apk ./evtraw.apk
+          rm -f ./RTIapp.apk
+
       - name: Create Module Zip
         run: |
-          zip -r9 evtraw-${{ github.event.inputs.version }}.zip . -x "*.git*" -x ".github/*" -x "*.zip"
+          zip -r9 evtraw-${{ github.event.inputs.version }}.zip . -x "*.git*" -x ".github/*" -x "*.zip" -x "companion/*"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
