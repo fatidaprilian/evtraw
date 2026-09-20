@@ -64,10 +64,9 @@ In standard Android deployments, touch events from the physical digitizer pass t
 
 ---
 
-## 5-Layer Bypass Architecture
+## 4-Layer Bypass Architecture
 
-### 1. Kernel IRQ Routing & Scheduler Prioritization
-- **Dynamic IRQ Affinity (`smp_affinity_list`)**: Detects the touch digitizer hardware interrupt line and binds it to a dedicated high-performance core (preferring Gold/Prime cores like CPU 5 on Snapdragon architectures, with adaptive fallback). This prevents Little cores (CPU 0-3 @ 1.8GHz) from handling touch interrupts, eliminating 1-3ms of wake-up and thread scheduling delay.
+### 1. Scheduler Prioritization & Energy-Aware Scheduling
 - **EAS Scheduler Foreground Boost (`schedtune` / `uclamp`)**: Bumps `/dev/stune/top-app/schedtune.boost` and enables `prefer_idle` so the active foreground game or UI thread handling touch dispatch is immediately scheduled on an idle performance core without frequency ramping lag.
 
 ### 2. Driver and Vendor Controller Layer
