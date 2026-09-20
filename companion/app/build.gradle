@@ -10,8 +10,8 @@ android {
         applicationId "fatidaprilian.evtraw"
         minSdk 26
         targetSdk 34
-        versionCode 100
-        versionName "v1.0.0"
+        versionCode 101
+        versionName "v1.0.1"
     }
 
     buildTypes {
