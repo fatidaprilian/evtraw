@@ -1,6 +1,6 @@
 {
-  "version": "v2.6",
-  "versionCode": 26,
-  "zipUrl": "https://github.com/kaminarich/RTI/releases/download/v2.6/RTI-v2.6.zip",
-  "changelog": "https://raw.githubusercontent.com/kaminarich/RTI/main/README.md"
+  "version": "v1.0.0",
+  "versionCode": 100,
+  "zipUrl": "https://github.com/fatidaprilian/evtraw/releases/latest/download/evtraw-v1.0.0.zip",
+  "changelog": "https://raw.githubusercontent.com/fatidaprilian/evtraw/main/README.md"
 }
