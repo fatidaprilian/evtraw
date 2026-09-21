@@ -42,11 +42,15 @@ for uclamp_node in /dev/cpuctl/top-app/cpu.uclamp.min; do
     fi
 done
 
-# 3. System Properties for Native Resampling Bypass & Idle Prevention
+# 3. System Properties for Native Resampling Bypass, Idle Prevention & SurfaceFlinger Pacing
 if command -v resetprop >/dev/null 2>&1; then
     resetprop -n ro.input.resampling 0
     resetprop -n ro.vendor.display.touch.idle.enable false
+    resetprop -n debug.sf.latch_unsignaled 1
+    resetprop -n debug.sf.enable_gl_backpressure 0
 else
+    setprop debug.sf.latch_unsignaled 1 2>/dev/null || true
+    setprop debug.sf.enable_gl_backpressure 0 2>/dev/null || true
     # Read-only properties (ro.*) cannot be modified via setprop at runtime;
     # on systems without resetprop, they are applied at boot via system.prop
     log -p w -t EvtRaw "resetprop unavailable; ro.input.resampling must be supplied by system.prop" 2>/dev/null || true

@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Recommended default scope for rhythm & offline games. Users can manually add any app via LSPosed manager. -->
     <string-array name="xposed_scope">
-        <item>com.mobile.legends</item>
-        <item>com.tencent.ig</item>
-        <item>com.dts.freefireth</item>
-        <item>com.activision.callofduty.shooter</item>
-        <item>com.miHoYo.GenshinImpact</item>
         <item>com.PigeonGames.Phigros</item>
         <item>moe.low.arc</item>
+        <item>com.rayark.cytus2</item>
+        <item>com.dynamix.c3</item>
     </string-array>
 </resources>
