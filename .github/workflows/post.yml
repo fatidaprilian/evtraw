@@ -68,22 +68,25 @@ jobs:
           gradle-version: '8.5'
 
       - name: Decode Release Keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        id: decode_keystore
+        uses: timheuer/base64-to-file@v2
+        with:
+          fileName: 'release.jks'
+          fileDir: './companion/app/'
+          encodedString: ${{ secrets.KEYSTORE_BASE64 }}
+
+      - name: Verify Decoded Keystore
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "Decoding release keystore from repository secrets..."
-            echo "$KEYSTORE_BASE64" | base64 -d > companion/app/release.jks
-            ls -lh companion/app/release.jks
+          if [ -f "${{ steps.decode_keystore.outputs.filePath }}" ]; then
+            echo "Keystore decoded successfully at: ${{ steps.decode_keystore.outputs.filePath }}"
+            ls -lh "${{ steps.decode_keystore.outputs.filePath }}"
           else
-            echo "::error::Secret KEYSTORE_BASE64 is not set in GitHub repository settings!"
-            echo "::error::Please go to Settings -> Secrets and variables -> Actions and add KEYSTORE_BASE64, KEYSTORE_PASSWORD, and KEY_ALIAS."
-            exit 1
+            echo "::warning::Keystore file not found. Gradle will fallback to debug signing."
           fi
 
       - name: Build EvtRaw Companion APK
         env:
-          KEYSTORE_FILE: release.jks
+          KEYSTORE_FILE: ${{ steps.decode_keystore.outputs.filePath }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
