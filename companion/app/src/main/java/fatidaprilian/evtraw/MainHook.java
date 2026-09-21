@@ -33,7 +33,9 @@ public class MainHook implements IXposedHookLoadPackage {
         if (isNativeGame) {
             // Stage 3: Direct Unbuffered Touch Dispatch (Bypass VSYNC buffering)
             hookVsyncBatching(lpparam.classLoader);
-            XposedBridge.log(TAG + ": [" + lpparam.packageName + "] native game engine detected -> unbuffered VSYNC bypass ENABLED");
+            // Stage 4: Adaptive Window Flags (3-Button SLIPPERY vs Gesture Preservation)
+            hookAdaptiveGameWindow(lpparam.classLoader);
+            XposedBridge.log(TAG + ": [" + lpparam.packageName + "] native game engine detected -> optimizations ENABLED");
         } else {
             XposedBridge.log(TAG + ": [" + lpparam.packageName + "] standard view hierarchy -> VSYNC batching retained for smooth scrolling");
         }
@@ -131,4 +133,44 @@ public class MainHook implements IXposedHookLoadPackage {
             XposedBridge.log(TAG + ": Failed to hook scheduleConsumeBatchedInput: " + t.getMessage());
         }
     }
+
+    /**
+     * Adaptively applies FLAG_SLIPPERY (0x20000000) only for 3-Button navigation users.
+     * If gesture navigation is detected (MIUI force_fsg_nav_bar=1 or AOSP navigation_mode=2),
+     * FLAG_SLIPPERY is omitted so full-screen edge gestures (Back/Home) remain 100% functional.
+     */
+    private void hookAdaptiveGameWindow(ClassLoader cl) {
+        try {
+            Class<?> activityClass = XposedHelpers.findClass("android.app.Activity", cl);
+
+            XposedHelpers.findAndHookMethod(activityClass, "onAttachedToWindow", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    try {
+                        android.app.Activity activity = (android.app.Activity) param.thisObject;
+                        int fsg = android.provider.Settings.Global.getInt(
+                                activity.getContentResolver(), "force_fsg_nav_bar", -1);
+                        int nav = android.provider.Settings.Secure.getInt(
+                                activity.getContentResolver(), "navigation_mode", -1);
+
+                        boolean isGesture = (fsg == 1) || (nav == 2);
+
+                        if (!isGesture) {
+                            // 3-Button navigation: safe to apply FLAG_SLIPPERY
+                            activity.getWindow().addFlags(0x20000000);
+                            XposedBridge.log(TAG + ": [" + activity.getPackageName() + "] 3-Button navigation detected -> FLAG_SLIPPERY enabled");
+                        } else {
+                            // Gesture navigation: omit flag to preserve back/home edge gestures
+                            XposedBridge.log(TAG + ": [" + activity.getPackageName() + "] Gesture navigation detected -> FLAG_SLIPPERY omitted for gesture safety");
+                        }
+                    } catch (Throwable inner) {
+                        // Graceful fallback if settings provider is inaccessible
+                    }
+                }
+            });
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + ": Failed to hook Activity.onAttachedToWindow: " + t.getMessage());
+        }
+    }
 }
+

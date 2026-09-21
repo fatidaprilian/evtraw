@@ -3,6 +3,15 @@
 ro.input.resampling=0
 # Prevent vendor touch driver from dropping into idle downscaled sampling rates
 ro.vendor.display.touch.idle.enable=false
-# SurfaceFlinger Render Pacing (Bypass ~8.3ms Triple Buffering queue latency)
-debug.sf.latch_unsignaled=1
+
+# SurfaceFlinger Pure Double Buffering (Bypasses ~8.33ms Triple Buffering queue latency)
+ro.surface_flinger.max_frame_buffer_acquired_buffers=2
+
+# SurfaceFlinger VSYNC Phase Offset Optimization (Cuts pipeline callback latency)
+debug.sf.early_phase_offset_ns=1500000
+debug.sf.early_app_phase_offset_ns=1500000
+debug.sf.early_gl_phase_offset_ns=1500000
+debug.sf.early_gl_app_phase_offset_ns=1500000
+debug.sf.high_fps_early_phase_offset_ns=1500000
+debug.sf.high_fps_early_gl_phase_offset_ns=1500000
 debug.sf.enable_gl_backpressure=0
