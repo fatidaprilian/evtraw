@@ -16,18 +16,10 @@ android {
 
     signingConfigs {
         release {
-            def keystorePath = System.getenv("KEYSTORE_FILE") ?: "release.jks"
-            def keystoreFile = file(keystorePath)
-            def keystorePassword = System.getenv("KEYSTORE_PASSWORD")
-            def keyAlias = System.getenv("KEY_ALIAS") ?: "evtraw"
-            def keyPassword = System.getenv("KEY_PASSWORD") ?: keystorePassword
-
-            if (keystoreFile.exists() && keystorePassword) {
-                storeFile keystoreFile
-                storePassword keystorePassword
-                keyAlias keyAlias
-                keyPassword keyPassword
-            }
+            storeFile file(System.getenv("KEYSTORE_FILE") ?: "release.jks")
+            storePassword System.getenv("KEYSTORE_PASSWORD") ?: ""
+            keyAlias System.getenv("KEY_ALIAS") ?: "evtraw"
+            keyPassword System.getenv("KEY_PASSWORD") ?: System.getenv("KEYSTORE_PASSWORD") ?: ""
         }
     }
 

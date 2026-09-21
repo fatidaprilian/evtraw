@@ -74,6 +74,7 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "Decoding release keystore from repository secrets..."
             echo "$KEYSTORE_BASE64" | base64 -d > companion/app/release.jks
+            ls -lh companion/app/release.jks
           else
             echo "::error::Secret KEYSTORE_BASE64 is not set in GitHub repository settings!"
             echo "::error::Please go to Settings -> Secrets and variables -> Actions and add KEYSTORE_BASE64, KEYSTORE_PASSWORD, and KEY_ALIAS."
