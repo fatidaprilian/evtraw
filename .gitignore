@@ -8,4 +8,6 @@ companion/.gradle/
 companion/build/
 companion/app/build/
 local.properties
+*.jks
+*.keystore
 

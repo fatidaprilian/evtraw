@@ -73,22 +73,29 @@ done
 if [ -f "$MODDIR/.apk_pending" ]; then
     for apk_file in evtraw.apk RTIapp.apk; do
         if [ -f "$MODDIR/$apk_file" ]; then
-            if pm install --user 0 -r "$MODDIR/$apk_file" >/dev/null 2>&1 || \
-               pm install -r "$MODDIR/$apk_file" >/dev/null 2>&1; then
+            case "$apk_file" in
+                RTIapp.apk) target_pkg="com.rti.idc" ;;
+                *) target_pkg="fatidaprilian.evtraw" ;;
+            esac
+
+            install_out=$(pm install --user 0 -r "$MODDIR/$apk_file" 2>&1 || pm install -r "$MODDIR/$apk_file" 2>&1)
+            if echo "$install_out" | grep -q "Success"; then
                 log -p i -t EvtRaw "Companion app ($apk_file) installed (boot retry)."
                 rm -f "$MODDIR/.apk_pending" "$MODDIR/$apk_file"
                 break
-            else
-                # Clean reinstall if failed due to signature conflict
-                pm uninstall fatidaprilian.evtraw >/dev/null 2>&1 || pm uninstall --user 0 fatidaprilian.evtraw >/dev/null 2>&1
-                if pm install --user 0 -r "$MODDIR/$apk_file" >/dev/null 2>&1 || \
-                   pm install -r "$MODDIR/$apk_file" >/dev/null 2>&1; then
+            elif echo "$install_out" | grep -q "INSTALL_FAILED_UPDATE_INCOMPATIBLE"; then
+                # Clean reinstall only on explicit signature conflict
+                pm uninstall "$target_pkg" >/dev/null 2>&1 || pm uninstall --user 0 "$target_pkg" >/dev/null 2>&1
+                reinstall_out=$(pm install --user 0 -r "$MODDIR/$apk_file" 2>&1 || pm install -r "$MODDIR/$apk_file" 2>&1)
+                if echo "$reinstall_out" | grep -q "Success"; then
                     log -p i -t EvtRaw "Companion app ($apk_file) reinstalled cleanly after resolving conflict."
                     rm -f "$MODDIR/.apk_pending" "$MODDIR/$apk_file"
                     break
                 else
-                    log -p e -t EvtRaw "Companion app ($apk_file) install failed; will retry next boot."
+                    log -p e -t EvtRaw "Companion app ($apk_file) reinstall failed: $reinstall_out; will retry next boot."
                 fi
+            else
+                log -p w -t EvtRaw "Companion app ($apk_file) install deferred: $install_out; will retry next boot."
             fi
         fi
     done
