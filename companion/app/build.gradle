@@ -27,9 +27,6 @@ android {
                 storePassword keystorePassword
                 keyAlias keyAlias
                 keyPassword keyPassword
-            } else {
-                // Fallback to debug signing when release credentials are not provided
-                initWith debug
             }
         }
     }
