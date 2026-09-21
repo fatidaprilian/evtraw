@@ -10,8 +10,8 @@ android {
         applicationId "fatidaprilian.evtraw"
         minSdk 26
         targetSdk 34
-        versionCode 103
-        versionName "v1.0.3"
+        versionCode 104
+        versionName "v1.0.4"
     }
 
     signingConfigs {
