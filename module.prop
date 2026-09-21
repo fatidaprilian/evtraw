@@ -5,3 +5,4 @@ versionCode=100
 author=fatidaprilian (original by kaminarich)
 description=Raw Touch Input (aarch64): disables IDC touch filtering, bypasses native resampling, accelerates SurfaceFlinger render pacing, and tunes kernel touch drivers via ioctl/sysfs to deliver unthrottled hardware touch response.
 banner=rti.webp
+updateJson=https://raw.githubusercontent.com/fatidaprilian/evtraw/main/update.json

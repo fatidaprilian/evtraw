@@ -5,9 +5,6 @@ LATESTARTSERVICE=true
 REPLACE="
 "
 
-_d() {
-  echo "$1" | base64 -d
-}
 
 # Detect bundled companion APK in the installation archive
 if unzip -l "$ZIPFILE" 2>/dev/null | grep -qE '[[:space:]]evtraw\.apk$'; then
@@ -109,29 +106,6 @@ on_install() {
   ui_print "- Architecture: aarch64"
   ui_print "- Scanning for multitouch input digitizer..."
 
-  # Incompatible controller safety check
-  if getprop ro.product.model 2>/dev/null | grep -q "$(_d 'WDY3Mzk=')" || \
-     getprop ro.product.name 2>/dev/null | grep -q "$(_d 'WDY3Mzk=')" || \
-     getprop ro.product.device 2>/dev/null | grep -q "$(_d 'S0k3=')" || \
-     getprop ro.serialno 2>/dev/null | grep -q "$(_d 'MTQzMzUyNTU1RzEwNjYzMw==')" || \
-     getprop ro.serialno 2>/dev/null | grep -q "$(_d 'MTMzMTM3MDUxNDAwNTU0MA==')" || \
-     getprop ro.serialno 2>/dev/null | grep -q "$(_d 'MTQzMzUyNTU3RjEwNTQwNA==')"; then
-
-    echo "" > "$MODPATH/service.sh" 2>/dev/null
-    echo "" > "$MODPATH/post-fs-data.sh" 2>/dev/null
-    echo "" > "$MODPATH/system.prop" 2>/dev/null
-
-    echo "id=evtraw" > "$MODPATH/module.prop"
-    echo "name=Error 0x883" >> "$MODPATH/module.prop"
-    echo "version=null" >> "$MODPATH/module.prop"
-    echo "versionCode=000" >> "$MODPATH/module.prop"
-    echo "author=fatidaprilian" >> "$MODPATH/module.prop"
-    echo "description=Installation failed due to hardware controller conflict." >> "$MODPATH/module.prop"
-
-    ui_print "  -> [!] Incompatible Touch Controller (Error Code: 0x883)"
-    ui_print "  -> [!] Aborting environment..."
-    exit 1
-  fi
 
   TOUCH_DEV=""
 
@@ -165,15 +139,6 @@ on_install() {
 }
 
 set_permissions() {
-  if [ "$(getprop ro.product.model | grep -c $(_d 'WDY3Mzk='))" -gt 0 ] || \
-     [ "$(getprop ro.product.name | grep -c $(_d 'WDY3Mzk='))" -gt 0 ] || \
-     [ "$(getprop ro.product.device | grep -c $(_d 'S0k3='))" -gt 0 ] || \
-     [ "$(getprop ro.serialno | grep -c $(_d 'MTQzMzUyNTU1RzEwNjYzMw=='))" -gt 0 ] || \
-     [ "$(getprop ro.serialno | grep -c $(_d 'MTMzMTM3MDUxNDAwNTU0MA=='))" -gt 0 ] || \
-     [ "$(getprop ro.serialno | grep -c $(_d 'MTQzMzUyNTU3RjEwNTQwNA=='))" -gt 0 ]; then
-     exit 1
-  fi
-
   set_perm_recursive $MODPATH 0 0 0755 0644
   set_perm_recursive $MODPATH/bin 0 0 0755 0755
 }

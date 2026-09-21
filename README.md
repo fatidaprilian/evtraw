@@ -105,9 +105,11 @@ Hooks `android.view.ViewConfiguration` and `ViewRootImpl` inside application run
 - `getDoubleTapTimeout()` -> Forced to `100` ms.
 - **Smart VSYNC Bypass**: Single-pass runtime detection automatically unbuffers touch dispatch (`consumeBatchedInputEvents(-1L)` and `mUnbufferedInputDispatch = true`) for target games while retaining standard batching for UI scrolling.
 
-> [!TIP]
-> **Anti-Cheat Integrity (0% Risk for Competitive Games)**:
-> Layers 1 through 5 (Scheduler, Driver ioctl, IDC calibration, Resampling bypass, and SurfaceFlinger pacing) operate completely at the kernel, vendor, and OS framework levels. Games with aggressive anti-cheat (Tencent ACE in PUBG, Moonton Security in MLBB) receive clean, unbuffered input from official Android system channels without any third-party `.so` injection or memory tampering inside the game process.
+> [!WARNING]
+> **Anti-Cheat Advisory (DYOR - Do Your Own Risk)**:
+> Enabling a game in the LSPosed scope unlocks instantaneous touch registration and sub-pixel sensitivity. However, because LSPosed inherently attaches its runtime bridge (`liblspd.so`) into hooked target processes, online games with strict third-party environment scanners (e.g., Tencent ACE in PUBG Mobile) may detect the presence of the Xposed framework. 
+> 
+> You can try enabling it for your games, but proceed at your own discretion (DYOR). If you prefer zero risk on competitive accounts, simply leave the game unchecked in LSPosed—Layers 1 through 5 (Kernel 360Hz driver, IDC calibration, resampling bypass, and SurfaceFlinger pacing) will still provide ultra-low latency with 100% clean process memory.
 
 ---
 
