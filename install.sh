@@ -33,27 +33,30 @@ install_apk() {
   ui_print "- Installing EvtRaw companion app (LSPosed module)..."
 
   # Attempt direct installation/upgrade
-  if pm install --user 0 -r "$MODPATH/$APK_NAME" >/dev/null 2>&1 || \
-     pm install -r "$MODPATH/$APK_NAME" >/dev/null 2>&1; then
+  INSTALL_OUT=$(pm install --user 0 -r "$MODPATH/$APK_NAME" 2>&1 || pm install -r "$MODPATH/$APK_NAME" 2>&1)
+
+  if echo "$INSTALL_OUT" | grep -q "Success"; then
     ui_print "  -> App installed successfully."
     rm -f "$MODPATH/$APK_NAME"
-  else
-    # Check if failed due to signature mismatch from a previously installed build
+  elif echo "$INSTALL_OUT" | grep -q "INSTALL_FAILED_UPDATE_INCOMPATIBLE"; then
+    # Only perform clean reinstall on explicit signature conflict
     if [ -n "$PKG" ] && pm list packages 2>/dev/null | grep -q "$PKG"; then
-      ui_print "  -> [!] Signature conflict detected with existing app."
+      ui_print "  -> [!] Signature mismatch detected (INSTALL_FAILED_UPDATE_INCOMPATIBLE)."
       ui_print "  -> Clean reinstalling companion app..."
       pm uninstall "$PKG" >/dev/null 2>&1 || pm uninstall --user 0 "$PKG" >/dev/null 2>&1
-      if pm install --user 0 -r "$MODPATH/$APK_NAME" >/dev/null 2>&1 || \
-         pm install -r "$MODPATH/$APK_NAME" >/dev/null 2>&1; then
+      REINSTALL_OUT=$(pm install --user 0 -r "$MODPATH/$APK_NAME" 2>&1 || pm install -r "$MODPATH/$APK_NAME" 2>&1)
+      if echo "$REINSTALL_OUT" | grep -q "Success"; then
         ui_print "  -> App reinstalled successfully."
         rm -f "$MODPATH/$APK_NAME"
         return 0
       fi
     fi
-
-    ui_print "  -> [!] App install deferred; will retry at boot."
+    ui_print "  -> [!] Reinstall failed; will retry at boot."
     touch "$MODPATH/.apk_pending"
-    # Retain APK in MODPATH so service.sh can retry at boot
+  else
+    # Preserve installed app on other failures (downgrade, storage, parse error)
+    ui_print "  -> [!] App install deferred ($INSTALL_OUT); will retry at boot."
+    touch "$MODPATH/.apk_pending"
   fi
 }
 

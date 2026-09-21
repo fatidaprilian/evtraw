@@ -16,10 +16,21 @@ android {
 
     signingConfigs {
         release {
-            storeFile file('release.jks')
-            storePassword 'evtraw123'
-            keyAlias 'evtraw'
-            keyPassword 'evtraw123'
+            def keystorePath = System.getenv("KEYSTORE_FILE") ?: "release.jks"
+            def keystoreFile = file(keystorePath)
+            def keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+            def keyAlias = System.getenv("KEY_ALIAS") ?: "evtraw"
+            def keyPassword = System.getenv("KEY_PASSWORD") ?: keystorePassword
+
+            if (keystoreFile.exists() && keystorePassword) {
+                storeFile keystoreFile
+                storePassword keystorePassword
+                keyAlias keyAlias
+                keyPassword keyPassword
+            } else {
+                // Fallback to debug signing when release credentials are not provided
+                initWith debug
+            }
         }
     }
 
