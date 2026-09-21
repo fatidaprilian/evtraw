@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Pre-populated recommended scope for low-latency dispatch. Users can adjust in LSPosed manager. -->
     <string-array name="xposed_scope">
         <item>com.mobile.legends</item>
         <item>com.tencent.ig</item>
@@ -8,5 +9,7 @@
         <item>com.miHoYo.GenshinImpact</item>
         <item>com.PigeonGames.Phigros</item>
         <item>moe.low.arc</item>
+        <item>com.rayark.cytus2</item>
+        <item>com.dynamix.c3</item>
     </string-array>
 </resources>

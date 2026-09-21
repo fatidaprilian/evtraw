@@ -42,11 +42,15 @@ for uclamp_node in /dev/cpuctl/top-app/cpu.uclamp.min; do
     fi
 done
 
-# 3. System Properties for Native Resampling Bypass & Idle Prevention
+# 3. System Properties for Native Resampling Bypass, Idle Prevention & SurfaceFlinger Pacing
 if command -v resetprop >/dev/null 2>&1; then
     resetprop -n ro.input.resampling 0
     resetprop -n ro.vendor.display.touch.idle.enable false
+    resetprop -n debug.sf.latch_unsignaled 1
+    resetprop -n debug.sf.enable_gl_backpressure 0
 else
+    setprop debug.sf.latch_unsignaled 1 2>/dev/null || true
+    setprop debug.sf.enable_gl_backpressure 0 2>/dev/null || true
     # Read-only properties (ro.*) cannot be modified via setprop at runtime;
     # on systems without resetprop, they are applied at boot via system.prop
     log -p w -t EvtRaw "resetprop unavailable; ro.input.resampling must be supplied by system.prop" 2>/dev/null || true
@@ -75,7 +79,16 @@ if [ -f "$MODDIR/.apk_pending" ]; then
                 rm -f "$MODDIR/.apk_pending" "$MODDIR/$apk_file"
                 break
             else
-                log -p e -t EvtRaw "Companion app ($apk_file) install failed; will retry next boot."
+                # Clean reinstall if failed due to signature conflict
+                pm uninstall fatidaprilian.evtraw >/dev/null 2>&1 || pm uninstall --user 0 fatidaprilian.evtraw >/dev/null 2>&1
+                if pm install --user 0 -r "$MODDIR/$apk_file" >/dev/null 2>&1 || \
+                   pm install -r "$MODDIR/$apk_file" >/dev/null 2>&1; then
+                    log -p i -t EvtRaw "Companion app ($apk_file) reinstalled cleanly after resolving conflict."
+                    rm -f "$MODDIR/.apk_pending" "$MODDIR/$apk_file"
+                    break
+                else
+                    log -p e -t EvtRaw "Companion app ($apk_file) install failed; will retry next boot."
+                fi
             fi
         fi
     done

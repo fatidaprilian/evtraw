@@ -3,3 +3,6 @@
 ro.input.resampling=0
 # Prevent vendor touch driver from dropping into idle downscaled sampling rates
 ro.vendor.display.touch.idle.enable=false
+# SurfaceFlinger Render Pacing (Bypass ~8.3ms Triple Buffering queue latency)
+debug.sf.latch_unsignaled=1
+debug.sf.enable_gl_backpressure=0
