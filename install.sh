@@ -96,52 +96,20 @@ print_modname() {
 
 on_install() {
   ui_print "- Extracting module files..."
-  unzip -o "$ZIPFILE" 'system/*' -d $MODPATH >&2
   unzip -o "$ZIPFILE" 'rti.webp' -d $MODPATH >&2
   unzip -o "$ZIPFILE" 'service.sh' -d $MODPATH >&2
   unzip -o "$ZIPFILE" 'post-fs-data.sh' -d $MODPATH >&2
   unzip -o "$ZIPFILE" 'uninstall.sh' -d $MODPATH >&2
-  unzip -o "$ZIPFILE" 'bin/RTI--aarch64' -d $MODPATH >&2
   unzip -o "$ZIPFILE" 'system.prop' -d $MODPATH >&2
   unzip -o "$ZIPFILE" "$APK_NAME" -d $MODPATH >&2
 
   ui_print " "
   ui_print "- Architecture: aarch64"
-  ui_print "- Scanning for multitouch input digitizer..."
-
-
-  TOUCH_DEV=""
-
-  for event in /dev/input/event*; do
-    if getevent -il "$event" 2>/dev/null | grep -q "ABS_MT_POSITION_X"; then
-      TOUCH_DEV=$(getevent -il "$event" 2>/dev/null | grep "name:" | cut -d '"' -f 2)
-      break
-    fi
-  done
-
-  if [ -n "$TOUCH_DEV" ]; then
-    ui_print "  -> Detected touchscreen digitizer: [$TOUCH_DEV]"
-
-    IDC_DIR="$MODPATH/system/usr/idc"
-    mkdir -p "$IDC_DIR"
-
-    # If detected device is not fts_ts, copy template to match detected device name
-    if [ "$TOUCH_DEV" != "fts_ts" ]; then
-      cp "$IDC_DIR/rairin_touch.idc" "$IDC_DIR/${TOUCH_DEV}.idc" 2>/dev/null || true
-      ui_print "  -> Generated IDC mapping for: ${TOUCH_DEV}.idc"
-    else
-      ui_print "  -> Native fts_ts.idc mapping active."
-    fi
-  else
-    ui_print "  -> [!] Multitouch device name not detected via evdev."
-    ui_print "  -> Using default IDC configuration."
-  fi
-
+  ui_print "- Native vendor IDC calibration preserved."
   ui_print " "
   install_apk
 }
 
 set_permissions() {
   set_perm_recursive $MODPATH 0 0 0755 0644
-  set_perm_recursive $MODPATH/bin 0 0 0755 0755
 }

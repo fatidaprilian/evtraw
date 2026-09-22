@@ -16,13 +16,7 @@ if [ "$(uname -m)" != "aarch64" ]; then
     exit 1
 fi
 
-# 1. Run driver controller binary for ioctl and kernel nodes
-if [ -f "$MODDIR/bin/RTI--aarch64" ]; then
-    chmod +x "$MODDIR/bin/RTI--aarch64"
-    "$MODDIR/bin/RTI--aarch64"
-fi
-
-# 2. Energy-Aware Scheduler (EAS) Foreground Touch Responsiveness Tuning
+# 1. Energy-Aware Scheduler (EAS) Foreground Touch Responsiveness Tuning
 # Ensure foreground touch threads are immediately assigned to idle high-performance cores
 for boost_node in /dev/stune/top-app/schedtune.boost; do
     if [ -f "$boost_node" ]; then
@@ -42,11 +36,10 @@ for uclamp_node in /dev/cpuctl/top-app/cpu.uclamp.min; do
     fi
 done
 
-# 3. System Properties for Native Resampling Bypass, Idle Prevention & Conditional SurfaceFlinger Pacing
+# 2. System Properties for Idle Prevention & Conditional SurfaceFlinger Pacing
 SDK_VER=$(getprop ro.build.version.sdk)
 
 if command -v resetprop >/dev/null 2>&1; then
-    resetprop -n ro.input.resampling 0
     resetprop -n ro.vendor.display.touch.idle.enable false
     resetprop -n debug.sf.enable_gl_backpressure 0
     if [ -n "$SDK_VER" ] && [ "$SDK_VER" -ge 33 ]; then
@@ -70,7 +63,7 @@ else
     log -p w -t EvtRaw "resetprop unavailable; ro.* properties applied via system.prop" 2>/dev/null || true
 fi
 
-# 4. Direct Hardware Driver Configuration (FocalTech 360Hz & Palm Sensor Bypass)
+# 3. Direct Hardware Driver Configuration (High Touch Polling Rate & Palm Sensor Tuning)
 for bump_node in \
     /sys/class/touch/touch_dev/bump_sample_rate \
     /sys/devices/virtual/touch/touch_dev/bump_sample_rate; do
@@ -87,7 +80,7 @@ for palm_node in \
     fi
 done
 
-# 5. Real-Time Scheduler Priority for system_server Input Threads (SCHED_FIFO 98)
+# 4. Real-Time Scheduler Priority for system_server Input Threads (SCHED_FIFO 98)
 SERVER_PID=$(pidof system_server)
 if [ -n "$SERVER_PID" ]; then
     for tid in $(ps -T -p "$SERVER_PID" -o TID,CMDLINE 2>/dev/null | grep -E "InputReader|InputDispatcher" | awk '{print $1}'); do
@@ -97,7 +90,7 @@ if [ -n "$SERVER_PID" ]; then
     log -p i -t EvtRaw "Real-time SCHED_FIFO 98 applied to InputReader & InputDispatcher"
 fi
 
-# 6. Retry companion app install if it was deferred during module installation
+# 5. Retry companion app install if it was deferred during module installation
 if [ -f "$MODDIR/.apk_pending" ]; then
     for apk_file in evtraw.apk RTIapp.apk; do
         if [ -f "$MODDIR/$apk_file" ]; then
@@ -129,7 +122,7 @@ if [ -f "$MODDIR/.apk_pending" ]; then
     done
 fi
 
-# 7. Dynamic Game-Scoped PM QoS Daemon (0us CPU latency strictly when games are active)
+# 6. Dynamic Game-Scoped PM QoS Daemon (0us CPU latency strictly when games are active)
 start_pm_qos_daemon() {
     (
         exec 2>/dev/null

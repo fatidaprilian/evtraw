@@ -1,6 +1,4 @@
 # EvtRaw System Properties
-# Disable native 5ms touch resampling interpolation in libinput (InputTransport.cpp)
-ro.input.resampling=0
 # Prevent vendor touch driver from dropping into idle downscaled sampling rates
 ro.vendor.display.touch.idle.enable=false
 

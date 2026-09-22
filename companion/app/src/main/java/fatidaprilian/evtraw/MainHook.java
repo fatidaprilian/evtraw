@@ -211,6 +211,7 @@ public class MainHook implements IXposedHookLoadPackage {
             java.io.File[] tasks = taskDir.listFiles();
             if (tasks == null) return;
 
+            int count = 0;
             for (java.io.File task : tasks) {
                 try {
                     int tid = Integer.parseInt(task.getName());
@@ -227,12 +228,15 @@ public class MainHook implements IXposedHookLoadPackage {
                                 || name.contains("GLThread") || name.contains("Job.Worker")
                                 || name.contains("MainThread")) {
                             android.os.Process.setThreadPriority(tid, android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY);
-                            XposedBridge.log(TAG + ": Boosted game thread [" + name + "] (tid " + tid + ") to URGENT_DISPLAY");
+                            count++;
                         }
                     }
                 } catch (Throwable ignored) {
                     // Safe per-thread fallback
                 }
+            }
+            if (count > 0) {
+                XposedBridge.log(TAG + ": Boosted " + count + " engine/render threads to URGENT_DISPLAY");
             }
         } catch (Throwable ignored) {
             // Graceful directory read fallback
