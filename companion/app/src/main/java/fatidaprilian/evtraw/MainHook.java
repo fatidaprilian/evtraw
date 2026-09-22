@@ -35,7 +35,9 @@ public class MainHook implements IXposedHookLoadPackage {
             hookVsyncBatching(lpparam.classLoader);
             // Stage 4: Adaptive Window Flags (3-Button SLIPPERY vs Gesture Preservation)
             hookAdaptiveGameWindow(lpparam.classLoader);
-            XposedBridge.log(TAG + ": [" + lpparam.packageName + "] native game engine detected -> optimizations ENABLED");
+            // Stage 5: In-Process Thread Priority Booster (RenderThread & UI Thread)
+            hookThreadPriority(lpparam.classLoader);
+            XposedBridge.log(TAG + ": [" + lpparam.packageName + "] native game engine detected -> ultra optimizations ENABLED");
         } else {
             XposedBridge.log(TAG + ": [" + lpparam.packageName + "] standard view hierarchy -> VSYNC batching retained for smooth scrolling");
         }
@@ -78,26 +80,26 @@ public class MainHook implements IXposedHookLoadPackage {
     }
 
     /**
-     * Reduces touch deadzone (touchSlop) and tap timeouts to achieve near-instantaneous touch response.
+     * Reduces touch deadzone (touchSlop) to 0px and tap timeouts to 5ms for absolute instantaneous response.
      */
     private void hookViewConfiguration(ClassLoader cl) {
         try {
             Class<?> viewConfigClass = XposedHelpers.findClass("android.view.ViewConfiguration", cl);
 
             XposedHelpers.findAndHookMethod(viewConfigClass, "getScaledTouchSlop",
-                    XC_MethodReplacement.returnConstant(2));
+                    XC_MethodReplacement.returnConstant(0));
 
             XposedHelpers.findAndHookMethod(viewConfigClass, "getScaledPagingTouchSlop",
-                    XC_MethodReplacement.returnConstant(4));
+                    XC_MethodReplacement.returnConstant(1));
 
             XposedHelpers.findAndHookMethod(viewConfigClass, "getTapTimeout",
-                    XC_MethodReplacement.returnConstant(15));
+                    XC_MethodReplacement.returnConstant(5));
 
             XposedHelpers.findAndHookMethod(viewConfigClass, "getDoubleTapTimeout",
-                    XC_MethodReplacement.returnConstant(100));
+                    XC_MethodReplacement.returnConstant(80));
 
             XposedHelpers.findAndHookMethod(viewConfigClass, "getLongPressTimeout",
-                    XC_MethodReplacement.returnConstant(250));
+                    XC_MethodReplacement.returnConstant(200));
         } catch (Throwable t) {
             XposedBridge.log(TAG + ": Failed to hook ViewConfiguration: " + t.getMessage());
         }
@@ -170,6 +172,70 @@ public class MainHook implements IXposedHookLoadPackage {
             });
         } catch (Throwable t) {
             XposedBridge.log(TAG + ": Failed to hook Activity.onAttachedToWindow: " + t.getMessage());
+        }
+    }
+
+    /**
+     * Elevates in-process thread scheduling priority for UI and rendering threads to THREAD_PRIORITY_URGENT_DISPLAY (-8).
+     * Eliminates Linux CFS scheduling jitter during heavy 3D rendering loops without requiring root inside the app.
+     */
+    private void hookThreadPriority(ClassLoader cl) {
+        try {
+            // Elevate main UI thread immediately
+            try {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY);
+            } catch (Throwable ignored) {
+                // Ignore if process sandbox restricts main thread nice level
+            }
+
+            // Hook Activity.onResume to scan and elevate game engine threads once created
+            Class<?> activityClass = XposedHelpers.findClass("android.app.Activity", cl);
+            XposedHelpers.findAndHookMethod(activityClass, "onResume", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    boostGameThreads();
+                }
+            });
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + ": Failed to hook thread priority: " + t.getMessage());
+        }
+    }
+
+    /**
+     * Scans /proc/self/task to identify game engine worker and render threads,
+     * elevating them to URGENT_DISPLAY priority.
+     */
+    private void boostGameThreads() {
+        try {
+            java.io.File taskDir = new java.io.File("/proc/self/task");
+            java.io.File[] tasks = taskDir.listFiles();
+            if (tasks == null) return;
+
+            for (java.io.File task : tasks) {
+                try {
+                    int tid = Integer.parseInt(task.getName());
+                    java.io.File commFile = new java.io.File(task, "comm");
+                    if (!commFile.exists()) continue;
+
+                    java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(commFile));
+                    String comm = reader.readLine();
+                    reader.close();
+
+                    if (comm != null) {
+                        String name = comm.trim();
+                        if (name.contains("UnityMain") || name.contains("RenderThread")
+                                || name.contains("GLThread") || name.contains("Job.Worker")
+                                || name.contains("MainThread")) {
+                            android.os.Process.setThreadPriority(tid, android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY);
+                            XposedBridge.log(TAG + ": Boosted game thread [" + name + "] (tid " + tid + ") to URGENT_DISPLAY");
+                        }
+                    }
+                } catch (Throwable ignored) {
+                    // Safe per-thread fallback
+                }
+            }
+        } catch (Throwable ignored) {
+            // Graceful directory read fallback
         }
     }
 }
