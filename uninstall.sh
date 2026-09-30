@@ -1,8 +1,6 @@
 #!/system/bin/sh
-settings delete secure long_press_timeout 2>/dev/null
-settings delete secure multi_press_timeout 2>/dev/null
 
-# Restore palm sensor default heuristic (bump_sample_rate deliberately left intact per configuration)
+# Restore palm sensor default heuristic
 echo 1 > /sys/class/touch/touch_dev/palm_sensor 2>/dev/null || true
 echo 1 > /sys/devices/virtual/touch/touch_dev/palm_sensor 2>/dev/null || true
 
@@ -16,6 +14,8 @@ resetprop --delete debug.sf.early_gl_phase_offset_ns 2>/dev/null
 resetprop --delete debug.sf.early_gl_app_phase_offset_ns 2>/dev/null
 resetprop --delete debug.sf.high_fps_early_phase_offset_ns 2>/dev/null
 resetprop --delete debug.sf.high_fps_early_gl_phase_offset_ns 2>/dev/null
+resetprop --delete debug.sf.high_fps_late_app_phase_offset_ns 2>/dev/null
+resetprop --delete debug.sf.high_fps_late_sf_phase_offset_ns 2>/dev/null
 resetprop --delete debug.sf.auto_latch_unsignaled 2>/dev/null
 resetprop --delete debug.sf.latch_unsignaled 2>/dev/null
 resetprop --delete debug.sf.enable_gl_backpressure 2>/dev/null

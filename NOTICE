@@ -6,8 +6,9 @@ by kaminarich (https://github.com/kaminarich), licensed under the Apache License
 Version 2.0.
 
 Modifications and enhancements by fatidaprilian (https://github.com/fatidaprilian/evtraw):
-- Added dedicated Input Device Configuration (IDC) for FocalTech (fts_ts) and universal digitizers.
-- Adjusted maximum event dispatch rate to 360 events/second to match native 360Hz hardware touch polling capability.
-- Retained hardware compatibility safety checks while streamlining installation workflow.
-- Updated driver sysfs and ioctl tuning routines for Xiaomi and universal touch controllers.
-- Refactored documentation and installation workflows to adhere to standard technical specifications without emojis.
+- Real-time SCHED_FIFO 98 scheduling priority for system_server InputReader and InputDispatcher threads.
+- Dynamic game-scoped PM QoS CPU DMA latency bounding (50us) to eliminate deep C-state sleep jitter during active gaming.
+- Direct hardware touch controller sysfs polling rate maximization and palm deadzone reduction.
+- LSPosed companion engine delivering unbuffered touch dispatch and 1px touch slop sensitivity strictly to target games.
+- In-process render thread prioritization (-10) for game render and UI loops.
+- Streamlined Magisk, KernelSU, and APatch root installation workflow.

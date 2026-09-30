@@ -101,7 +101,7 @@ on_install() {
   unzip -o "$ZIPFILE" 'post-fs-data.sh' -d $MODPATH >&2
   unzip -o "$ZIPFILE" 'uninstall.sh' -d $MODPATH >&2
   unzip -o "$ZIPFILE" 'system.prop' -d $MODPATH >&2
-  unzip -o "$ZIPFILE" "$APK_NAME" -d $MODPATH >&2
+  [ -n "$APK_NAME" ] && unzip -o "$ZIPFILE" "$APK_NAME" -d $MODPATH >&2
 
   ui_print " "
   ui_print "- Architecture: aarch64"

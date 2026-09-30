@@ -36,22 +36,22 @@ In standard Android deployments, touch events from the physical digitizer pass t
         │  (Smart unbuffered VSYNC bypass for target games via LSPosed)
         ▼
 [ViewConfiguration] (View Hierarchy)
-        │  (Bypasses default 8-16dp touchSlop down to 0px, tapTimeout to 5ms)
+        │  (Bypasses default 8-16dp touchSlop down to 1px for target games)
         ▼
 [Application & Engine Threads] (UnityMain, RenderThread, GLThread)
-        │  (In-process priority boosted to THREAD_PRIORITY_URGENT_DISPLAY -8)
+        │  (In-process priority boosted to TOP_APP_BOOST -10)
         ▼
 [SurfaceFlinger] (Display Pipeline)
-        │  (Pure Double Buffering eliminates ~8.33ms Triple Buffering queue latency)
+        │  (Preserves vendor triple buffering without GPU stalls; safe auto-latch pacing)
         ▼
 [Display Panel] (Glass Photon Output at 120Hz)
 ```
 
 ### Why Default Android Touch & Display Feels Delayed
 1. **Touch Slop Deadbands**: `ViewConfiguration` forces the system to wait for a finger to travel 8 to 16 density-independent pixels (~24px - 48px) before registering analog motion.
-2. **Tap Delay Timers**: Gesture recognizers enforce a 100ms tap timeout before confirming button or skill presses.
+2. **Input Batching Delay**: Move events are held in queue until the next Choreographer VSYNC callback instead of immediately notifying game loops.
 3. **CFS Scheduling Contention**: UI and game engine render threads run with standard CFS timeslices, causing 2-6ms scheduling jitter during heavy 3D rendering.
-4. **Triple Buffering Queues**: SurfaceFlinger buffers up to 3 frames in queue, introducing an extra 1-frame (~8.33ms at 120Hz) presentation latency.
+4. **Deep C-State Wakeup Penalties**: CPU cores transitioning into C3/C4 power collapse introduce 200µs - 800µs wake-up latency on new touch interrupts.
 
 ---
 
@@ -59,43 +59,38 @@ In standard Android deployments, touch events from the physical digitizer pass t
 
 | Stage | Default Android Pipeline | EvtRaw Engine | Latency Impact |
 | :--- | :--- | :--- | :--- |
-| **Driver & TSR** | Throttled / power-saving idle downclocking | Native peak hardware rate (e.g. 360Hz / 480Hz) preserved via vendor driver tuning | **~2.77ms** scan interval |
-| **Input Scheduling** | CFS `SCHED_OTHER` thread timeslice delays | Elevated to `SCHED_FIFO` 98 on `InputReader` & `InputDispatcher` + Dynamic PM QoS (0µs) | **-2ms to -4ms** jitter reduction |
-| **Deadband (Slop)** | 8dp - 16dp touch slop (~24px - 48px deadzone) | Reduced to **0px** (sub-pixel tracking on the very first pixel delta) | **-15ms to -30ms** finger travel delay |
-| **Tap Delay** | 100ms tap timeout | Reduced to **5ms** via `ViewConfiguration` hook | **-95ms** skill release delay |
-| **Engine Priority** | Normal thread priority (nice 0 / 10) | Elevated in-process to `THREAD_PRIORITY_URGENT_DISPLAY` (-8) for `UnityMain` and render threads | **-1ms to -3ms** frame dispatch lag |
-| **Render Pacing** | Triple Buffering presentation queue (~8.33ms) | SurfaceFlinger Pure Double Buffering (`max_frame_buffer_acquired_buffers=2`) & 0.5ms phase offsets | **-8.33ms** buffer queue latency |
+| **Driver & TSR** | Throttled / power-saving idle downclocking | Native peak hardware rate preserved via vendor driver sysfs tuning | **~2.77ms** scan interval |
+| **Input Scheduling** | CFS `SCHED_OTHER` thread timeslice delays | Elevated to `SCHED_FIFO` 98 on `InputReader` & `InputDispatcher` + Dynamic PM QoS (50µs) | **-2ms to -4ms** jitter reduction |
+| **Deadband (Slop)** | 8dp - 16dp touch slop (~24px - 48px deadzone) | Reduced to **1px** in target games (sub-pixel tracking on first delta) | **-15ms to -30ms** finger travel delay |
+| **Input Dispatch** | VSYNC-batched move events | Unbuffered touch dispatch enabled natively in `ViewRootImpl` | **-4ms to -8ms** dispatch delay |
+| **Engine Priority** | Normal thread priority (nice 0 / 10) | Elevated in-process to `TOP_APP_BOOST` (-10) for `UnityMain` and render threads | **-1ms to -3ms** frame dispatch lag |
 
 ---
 
 ## Multi-Layer Bypass Architecture
 
 ### 1. Scheduler Prioritization & Real-Time Input Scheduling
-- **EAS Scheduler Foreground Boost (`schedtune` / `uclamp`)**: Bumps `/dev/stune/top-app/schedtune.boost` and enables `prefer_idle` so the active foreground game or UI thread handling touch dispatch is immediately scheduled on an idle performance core without frequency ramping lag.
-- **Real-Time Input Thread Priority (`SCHED_FIFO` 98)**: Elevates kernel priority for `InputReader` and `InputDispatcher` threads in `system_server` via `chrt -f -p 98` and binds them to `/dev/cpuset/top-app/tasks`, eliminating 2-6ms scheduling jitter during peak 3D rendering load.
-- **Dynamic Game-Scoped PM QoS Daemon**: Opens `/dev/cpu_dma_latency` with value `0` while games are active to eliminate C-state transition latency (100-300 $\mu$s), automatically releasing the lock upon exiting to preserve battery life.
+- **EAS Scheduler Foreground Boost (`schedtune` / `uclamp`)**: Baseline hints set on boot to assign foreground touch threads to idle high-performance cores without frequency ramping lag.
+- **Real-Time Input Thread Priority (`SCHED_FIFO` 98)**: Elevates kernel priority for `InputReader` and `InputDispatcher` threads in `system_server` via `chrt -f -p $TID 98` and binds them to `top-app` cpuset, eliminating scheduling jitter during peak 3D rendering load.
+- **Dynamic Game-Scoped PM QoS Daemon**: Opens `/dev/cpu_dma_latency` with value `50` while games are active to prevent CPU cores from entering deep sleep C3/C4 states (200-800µs wake latency) while allowing power-saving retention, automatically releasing the lock upon exiting or screen-off.
 
 ### 2. Driver and Vendor Controller Layer
-- **Hardware Sample Rate Bump & Palm Tuning**: Triggers vendor sysfs nodes (`/sys/class/touch/touch_dev/bump_sample_rate` = 1, `palm_sensor` = 0) to unlock maximum polling capacity on supported drivers without conflicting ioctls.
+- **Hardware Sample Rate Bump & Palm Tuning**: Triggers vendor sysfs nodes (`/sys/class/touch/touch_dev/bump_sample_rate` = 1, `palm_sensor` = 0) to unlock maximum polling capacity on supported drivers.
 - **Power Idle Suppression**: Disables `ro.vendor.display.touch.idle.enable` to prevent the digitizer from downclocking during static display frames.
 
 ### 3. Native Vendor Calibration & Peak TSR Preservation
-- **Preserves Native Vendor IDC**: Does not override or strip factory IDC calibration files, ensuring vendor multi-touch heuristics and high touch sampling rates (up to 360Hz/480Hz+) operate with full accuracy and zero synthetic coordinate distortion.
-- **Uncapped Framework Motion Event Pipeline**: Avoids artificial resampling suppression so the application layer receives dense, peak-frequency motion events natively.
+- **Preserves Native Vendor IDC**: Does not override or strip factory IDC calibration files, ensuring vendor multi-touch heuristics and high touch sampling rates operate with full accuracy and zero synthetic coordinate distortion.
+- **Dense Motion Event Pipeline**: Avoids artificial resampling suppression so the application layer receives dense, peak-frequency motion events natively.
 
 ### 4. SurfaceFlinger Render Pacing Layer (Freeze-Free)
-- **Pure Double Buffering**: Forces `ro.surface_flinger.max_frame_buffer_acquired_buffers=2` to eliminate the 1-frame (~8.33ms at 120Hz) Triple Buffering queue latency.
-- **VSYNC Phase Offset Optimization**: Tightens phase offsets (`debug.sf.early_phase_offset_ns=500000`, `high_fps` offsets = 500000) to reduce presentation queue latency to ~3.5ms - 4.5ms.
-- **Version-Conditional Pacing**: Automatically activates `debug.sf.auto_latch_unsignaled=true` on Android 13+ (SDK $\ge$ 33), while disabling aggressive latching on Android 12 to guarantee 100% immunity from display lockups and black screens.
+- **Vendor-Safe Buffer Architecture**: Preserves vendor-tuned display buffers on `FramebufferSurface` to avoid GPU composition stalls and jank.
+- **Version-Conditional Pacing**: Automatically activates `debug.sf.auto_latch_unsignaled=true` on Android 13+ (SDK $\ge$ 33), while disabling aggressive latching on Android 12 to guarantee immunity from display lockups.
 
-### 5. Framework ViewConfiguration, Adaptive Navigation & In-Process Thread Priority (LSPosed Companion)
-Hooks `android.view.ViewConfiguration`, `ViewRootImpl`, and `Activity` inside application runtimes:
-- `getScaledTouchSlop()` -> Forced to `0` px (true sub-pixel tracking; motion is registered immediately on the very first pixel delta).
-- `getTapTimeout()` -> Forced to `5` ms (single taps register 95ms faster).
-- `getDoubleTapTimeout()` -> Forced to `80` ms.
-- **Smart VSYNC Bypass**: Single-pass runtime detection automatically unbuffers touch dispatch (`consumeBatchedInputEvents(-1L)` and `mUnbufferedInputDispatch = true`) for target games while retaining standard batching for UI scrolling.
-- **In-Process Thread Priority Booster**: Elevates the game's Main UI Thread and background rendering threads (`UnityMain`, `RenderThread`, `GLThread`, `Job.Worker`) to `THREAD_PRIORITY_URGENT_DISPLAY` (-8) via `android.os.Process.setThreadPriority`, eliminating CFS scheduling jitter. Emits a clean, single-line summary log on resume.
-- **Adaptive Navigation Detection**: Reads `force_fsg_nav_bar` and `navigation_mode` dynamically. Automatically applies `FLAG_SLIPPERY` for 3-Button navigation users, while strictly omitting it for Full Screen Gesture users to preserve edge back/home swipe actions.
+### 5. Framework ViewConfiguration & In-Process Thread Priority (LSPosed Companion)
+Hooks inside target game processes:
+- `getScaledTouchSlop()` -> Reduced to `1` px for games (instant analog response; normal applications are untouched).
+- **Native Unbuffered Touch Dispatch**: Activates `mUnbufferedInputDispatch` on `ViewRootImpl` to consume motion events immediately without VSYNC batching.
+- **In-Process Thread Priority Booster**: Elevates the game's Main UI Thread and rendering threads (`UnityMain`, `RenderThread`, `GLThread`) to `TOP_APP_BOOST` (-10) via `android.os.Process.setThreadPriority`. Background compute workers (`Job.Worker`) are intentionally excluded to prevent render thread contention.
 
 > [!WARNING]
 > **Anti-Cheat Advisory (DYOR - Do Your Own Risk)**:
@@ -147,12 +142,14 @@ getevent -r -t /dev/input/eventX
 ```
 *(Replace `eventX` with your touch node, e.g., `/dev/input/event2`)*. Event rate should reach between 300Hz and 360Hz+ during active dragging on supported high-rate digitizers.
 
-### 2. Verify SurfaceFlinger Pure Double Buffering
-Verify that SurfaceFlinger buffer limit is active:
+### 2. Verify Real-Time Input Scheduling Priority
+Verify that `InputReader` and `InputDispatcher` run under `SCHED_FIFO` 98:
 ```bash
-getprop ro.surface_flinger.max_frame_buffer_acquired_buffers
+for tid in $(cat /proc/$(pidof system_server)/task/*/comm 2>/dev/null | grep -E "InputReader|InputDispatcher"); do
+  chrt -p "$tid"
+done
 ```
-Expected output: `2`.
+Expected output: Policy `SCHED_FIFO`, priority `98`.
 
 ### 3. Verify LSPosed Framework Hook & Thread Booster
 Inspect the Xposed runtime log:
@@ -161,8 +158,8 @@ logcat -d -s XposedBridge | grep -i "EvtRaw"
 ```
 Expected output:
 ```
-EvtRaw: Native game engine detected -> ultra optimizations ENABLED
-EvtRaw: Boosted 9 engine/render threads to URGENT_DISPLAY
+EvtRaw: [com.example.game] native game detected (early-detect) -> optimizations ENABLED
+EvtRaw: Boosted 4 render/engine threads to priority -10
 ```
 
 ### 4. Empirical Latency & Tracking Verification
@@ -200,11 +197,10 @@ evtraw/
 This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for complete details.
 
 - **Original Project**: RTI (Raw Touch Input) by [kaminarich](https://github.com/kaminarich).
-- **Modifications & Maintenance**: [fatidaprilian](https://github.com/fatidaprilian/evtraw).
-  - Re-engineered Level 5 ultra-low latency pipeline with 0px sub-pixel touch slop and 5ms tap timeouts.
-  - In-process engine thread priority booster elevating UI and 3D rendering threads (`UnityMain`, `RenderThread`) to `THREAD_PRIORITY_URGENT_DISPLAY` (-8).
-  - SurfaceFlinger Pure Double Buffering and 0.5ms tightened VSYNC phase offsets.
-  - Preserved full native 360Hz+ hardware touch sampling rate by eliminating conflicting legacy binary ioctls and synthetic IDC overrides.
-  - Open-sourced companion LSPosed hook in `companion/` with clean single-line logging.
+  - Enforced real-time `SCHED_FIFO` 98 priority for `InputReader` and `InputDispatcher` in `system_server`.
+  - Dynamic game-scoped PM QoS CPU DMA latency bounding (50µs) preventing deep sleep wake delays while preserving battery-saving retention.
+  - In-process engine thread priority booster elevating UI and 3D rendering threads (`UnityMain`, `RenderThread`, `GLThread`) to `TOP_APP_BOOST` (-10).
+  - Native unbuffered touch dispatch via `mUnbufferedInputDispatch` and 1px touch slop strictly inside verified game packages.
+  - Hardware touch driver polling rate maximization and palm deadzone reduction via vendor sysfs.
 
 All trademarks, device names, and brand names are the property of their respective owners.
