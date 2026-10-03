@@ -18,13 +18,14 @@ import java.io.File;
 import java.io.FileReader;
 
 /**
- * EvtRaw Companion LSPosed Hook v1.0.9
+ * EvtRaw Companion LSPosed Hook v1.1.0
  * Bypasses VSYNC batching delay, minimizes touch slop, and optimizes game thread priorities.
  */
 public class MainHook implements IXposedHookLoadPackage {
 
     private static final String TAG = "EvtRaw";
     private boolean mOptimizationsApplied = false;
+    private Handler mBoostHandler;
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
@@ -117,15 +118,18 @@ public class MainHook implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod(activityClass, "onResume", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    if (mBoostHandler == null) {
+                        mBoostHandler = new Handler(Looper.getMainLooper());
+                    }
+                    mBoostHandler.removeCallbacksAndMessages(null);
                     boostGameThreads();
 
-                    Handler handler = new Handler(Looper.getMainLooper());
                     // Stage 1: Engine initialization
-                    handler.postDelayed(() -> boostGameThreads(), 2000);
+                    mBoostHandler.postDelayed(() -> boostGameThreads(), 2000);
                     // Stage 2: Scene and asset loading
-                    handler.postDelayed(() -> boostGameThreads(), 6000);
+                    mBoostHandler.postDelayed(() -> boostGameThreads(), 6000);
                     // Stage 3: Active gameplay rendering threads
-                    handler.postDelayed(() -> boostGameThreads(), 15000);
+                    mBoostHandler.postDelayed(() -> boostGameThreads(), 15000);
                 }
             });
         } catch (Throwable t) {
@@ -149,9 +153,10 @@ public class MainHook implements IXposedHookLoadPackage {
                     File commFile = new File(task, "comm");
                     if (!commFile.exists()) continue;
 
-                    BufferedReader reader = new BufferedReader(new FileReader(commFile));
-                    String comm = reader.readLine();
-                    reader.close();
+                    String comm;
+                    try (BufferedReader reader = new BufferedReader(new FileReader(commFile))) {
+                        comm = reader.readLine();
+                    }
 
                     if (comm != null) {
                         String name = comm.trim();
@@ -163,8 +168,10 @@ public class MainHook implements IXposedHookLoadPackage {
                                 || name.contains("MainThread")
                                 || name.contains("VkWorker")
                                 || name.contains("GodotRender")) {
-                            android.os.Process.setThreadPriority(tid, -10);
-                            count++;
+                            if (android.os.Process.getThreadPriority(tid) > -10) {
+                                android.os.Process.setThreadPriority(tid, -10);
+                                count++;
+                            }
                         }
                     }
                 } catch (Throwable ignored) {}

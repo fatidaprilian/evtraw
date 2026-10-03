@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# EvtRaw Boot Service Script v1.0.9 (Universal aarch64)
+# EvtRaw Boot Service Script v1.1.0 (Universal aarch64)
 # Hardware touch driver tuning, real-time input scheduling, and game-scoped PM QoS.
 
 MODDIR=${0%/*}
@@ -9,7 +9,7 @@ until [ "$(getprop sys.boot_completed)" = "1" ]; do
 done
 sleep 5
 
-log -p i -t EvtRaw "Starting EvtRaw v1.0.9 (aarch64)..."
+log -p i -t EvtRaw "Starting EvtRaw v1.1.0 (aarch64)..."
 
 if [ "$(uname -m)" != "aarch64" ]; then
     log -p e -t EvtRaw "Error: Architecture $(uname -m) is not supported (aarch64 only)"
@@ -112,7 +112,7 @@ fi
 # 5. SurfaceFlinger display pacing (No phase offset tampering)
 SDK_VER=$(getprop ro.build.version.sdk)
 if command -v resetprop >/dev/null 2>&1; then
-    resetprop -n ro.vendor.display.touch.idle.enable false
+    # ro.vendor.display.touch.idle.enable is already set via system.prop
     if [ -n "$SDK_VER" ] && [ "$SDK_VER" -ge 33 ]; then
         resetprop -n debug.sf.auto_latch_unsignaled true
         log -p i -t EvtRaw "SurfaceFlinger: Android $SDK_VER -> auto_latch_unsignaled active"
@@ -155,6 +155,17 @@ start_pm_qos_daemon() {
         QOS_HELD=0
 
         is_screen_on() {
+            # Primary: hardware backlight node (ROM-agnostic, zero overhead)
+            for bl in /sys/class/leds/lcd-backlight/brightness /sys/class/backlight/*/brightness; do
+                if [ -f "$bl" ]; then
+                    val=$(cat "$bl" 2>/dev/null)
+                    if [ -n "$val" ]; then
+                        [ "$val" -gt 0 ] 2>/dev/null && return 0
+                        return 1
+                    fi
+                fi
+            done
+            # Fallback: dumpsys power state (for devices without backlight sysfs)
             dumpsys power 2>/dev/null | grep -qE "mHoldingDisplaySuspendBlocker=true|Display Power: state=ON"
         }
 
@@ -176,6 +187,7 @@ start_pm_qos_daemon() {
             FOCUS_LINE=$(dumpsys window 2>/dev/null | grep -m 1 -E "mCurrentFocus|mFocusedApp")
             if [ -n "$FOCUS_LINE" ]; then
                 if ! echo "$FOCUS_LINE" | grep -qiE "com\.google\.android\.play\.games|android\.systemui|com\.miui\.home"; then
+                    # Heuristic: [./_]game[s]? may match non-game packages — acceptable, only activates 50us QoS
                     if echo "$FOCUS_LINE" | grep -qiE "pubg|codm|freefire|genshin|honkai|mobile.*legends|roblox|wildrift|riotgames|epicgames|cytus|phigros|arcaea|[./_]game[s]?([./_]|$)"; then
                         IS_GAME=1
                         ACTIVE_NAME=$(echo "$FOCUS_LINE" | grep -oE '[a-zA-Z0-9._]+/[a-zA-Z0-9._]+' | head -n 1)
@@ -224,4 +236,5 @@ start_pm_qos_daemon() {
 }
 
 start_pm_qos_daemon
-log -p i -t EvtRaw "EvtRaw v1.0.9 initialized successfully"
+echo $! > "$MODDIR/.daemon_pid"
+log -p i -t EvtRaw "EvtRaw v1.1.0 initialized successfully"

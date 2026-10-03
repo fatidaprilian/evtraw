@@ -1,7 +1,7 @@
 id=evtraw
 name=EvtRaw (Raw Touch Input Engine)
-version=v1.0.9
-versionCode=109
+version=v1.1.0
+versionCode=110
 author=fatidaprilian (original by kaminarich)
 description=System-level touch and input latency optimization engine for Android (aarch64).
 banner=rti.webp

@@ -49,7 +49,7 @@ In standard Android deployments, touch events from the digitizer pass through fi
 
 ## Architectural Comparison
 
-| Pipeline Stage | Default Android Behavior | EvtRaw Engine (v1.0.9) | Latency Reduction |
+| Pipeline Stage | Default Android Behavior | EvtRaw Engine (v1.1.0) | Latency Reduction |
 | :--- | :--- | :--- | :--- |
 | **Driver & TSR** | Power-saving idle downclocking | Peak hardware rate preserved via vendor driver sysfs nodes | **~2.77ms** scan interval |
 | **Kernel IRQ Worker** | CFS timeslice scheduling (`SCHED_OTHER`) | Elevated to Real-Time `SCHED_FIFO` 98 (immune to `msm_irqbalance`) | **-1ms to -2ms** interrupt delay |
