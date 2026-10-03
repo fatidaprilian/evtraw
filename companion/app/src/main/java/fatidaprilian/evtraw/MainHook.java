@@ -1,10 +1,10 @@
 package fatidaprilian.evtraw;
 
 import android.app.Activity;
-import android.content.pm.ApplicationInfo;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.MotionEvent;
+import android.view.View;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -16,157 +16,50 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
 
 /**
- * EvtRaw Companion LSPosed Hook
- *
- * Provides ultra-low latency touch dispatch and reduced deadzones for competitive games.
- * Safely gates ViewConfiguration deadzone tuning and thread priority boosts strictly
- * to verified game engines to prevent UI degradation in standard applications.
+ * EvtRaw Companion LSPosed Hook v1.0.9
+ * Bypasses VSYNC batching delay, minimizes touch slop, and optimizes game thread priorities.
  */
 public class MainHook implements IXposedHookLoadPackage {
 
     private static final String TAG = "EvtRaw";
-
-    private static final Set<String> KNOWN_GAMES = new HashSet<>(Arrays.asList(
-            "com.mobile.legends",
-            "com.tencent.ig",
-            "com.dts.freefireth",
-            "com.activision.callofduty.shooter",
-            "com.miHoYo.GenshinImpact",
-            "com.PigeonGames.Phigros",
-            "moe.low.arc",
-            "com.rayark.cytus2",
-            "com.dynamix.c3",
-            "com.roblox.client",
-            "com.riotgames.league.wildrift",
-            "com.epicgames.portal"
-    ));
-
-    private static final String[] ENGINE_CLASSES = new String[] {
-            "com.unity3d.player.UnityPlayer",
-            "com.unity3d.player.UnityPlayerActivity",
-            "com.epicgames.ue4.GameActivity",
-            "com.epicgames.unreal.GameActivity",
-            "org.godotengine.godot.Godot",
-            "org.cocos2dx.lib.Cocos2dxActivity"
-    };
-
     private boolean mOptimizationsApplied = false;
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
-        if (lpparam.packageName == null || lpparam.packageName.equals("android")
+        if (lpparam.packageName == null 
+                || lpparam.packageName.equals("android")
                 || lpparam.packageName.startsWith("com.android.")
-                || lpparam.packageName.equals("com.google.android.play.games")) {
+                || lpparam.packageName.startsWith("com.google.android.")
+                || lpparam.packageName.equals("fatidaprilian.evtraw")) {
             return;
         }
 
-        boolean isGame = isGamePackage(lpparam);
-
-        if (isGame) {
-            applyGameOptimizations(lpparam.classLoader, lpparam.packageName, "early-detect");
-        } else {
-            // Hook Activity.onCreate to catch games loaded via dynamic split APKs or custom ClassLoaders
-            hookLateGameDetection(lpparam);
-        }
+        applyGameOptimizations(lpparam.classLoader, lpparam.packageName);
     }
 
-    /**
-     * Applies latency optimizations strictly to confirmed game packages.
-     */
-    private synchronized void applyGameOptimizations(ClassLoader cl, String packageName, String stage) {
+    private synchronized void applyGameOptimizations(ClassLoader cl, String packageName) {
         if (mOptimizationsApplied) return;
         mOptimizationsApplied = true;
 
-        // Stage 1: ViewConfiguration deadzone reduction (strictly within game process)
         hookViewConfiguration(cl);
-
-        // Stage 2: Native unbuffered touch dispatch
         hookUnbufferedTouchDispatch(cl);
-
-        // Stage 3: In-process thread priority booster (RenderThread & UI Thread)
         hookThreadPriority(cl);
 
-        XposedBridge.log(TAG + ": [" + packageName + "] native game detected (" + stage + ") -> optimizations ENABLED");
+        XposedBridge.log(TAG + ": [" + packageName + "] Game optimizations applied");
     }
 
     /**
-     * Identifies games via known scope list, ApplicationInfo category, or runtime engine classes.
-     */
-    private boolean isGamePackage(XC_LoadPackage.LoadPackageParam lpparam) {
-        if (KNOWN_GAMES.contains(lpparam.packageName)) {
-            return true;
-        }
-
-        if (lpparam.appInfo != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                if (lpparam.appInfo.category == ApplicationInfo.CATEGORY_GAME) {
-                    return true;
-                }
-            }
-            if ((lpparam.appInfo.flags & ApplicationInfo.FLAG_IS_GAME) != 0) {
-                return true;
-            }
-        }
-
-        for (String className : ENGINE_CLASSES) {
-            try {
-                Class.forName(className, false, lpparam.classLoader);
-                return true;
-            } catch (ClassNotFoundException ignored) {
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Hooks Activity.onCreate to catch multidex / dynamic asset delivery splits
-     * where engine classes are loaded after package load.
-     */
-    private void hookLateGameDetection(final XC_LoadPackage.LoadPackageParam lpparam) {
-        try {
-            Class<?> activityClass = XposedHelpers.findClass("android.app.Activity", lpparam.classLoader);
-            XposedHelpers.findAndHookMethod(activityClass, "onCreate", android.os.Bundle.class, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                    if (mOptimizationsApplied) return;
-
-                    Activity act = (Activity) param.thisObject;
-                    ClassLoader actCl = act.getClassLoader();
-
-                    for (String className : ENGINE_CLASSES) {
-                        try {
-                            Class.forName(className, false, actCl);
-                            applyGameOptimizations(actCl, lpparam.packageName, "late-detect");
-                            return;
-                        } catch (ClassNotFoundException ignored) {
-                        }
-                    }
-                }
-            });
-        } catch (Throwable ignored) {
-        }
-    }
-
-    /**
-     * Reduces touch deadzone (touchSlop) to 1px for instant analog/swipe response in games.
-     * Never applied to non-game apps to ensure normal UI scrolling remains intact.
+     * Minimizes touch deadzone (touchSlop) to 1px for instant analog tracking.
      */
     private void hookViewConfiguration(ClassLoader cl) {
         try {
             Class<?> viewConfigClass = XposedHelpers.findClass("android.view.ViewConfiguration", cl);
-
             XposedHelpers.findAndHookMethod(viewConfigClass, "getScaledTouchSlop",
                     XC_MethodReplacement.returnConstant(1));
-
             XposedHelpers.findAndHookMethod(viewConfigClass, "getScaledPagingTouchSlop",
                     XC_MethodReplacement.returnConstant(1));
-
             XposedHelpers.findAndHookMethod(viewConfigClass, "getLongPressTimeout",
                     XC_MethodReplacement.returnConstant(300));
         } catch (Throwable t) {
@@ -175,21 +68,34 @@ public class MainHook implements IXposedHookLoadPackage {
     }
 
     /**
-     * Natively enables unbuffered touch dispatch via ViewRootImpl's mUnbufferedInputDispatch flag.
-     * Prevents AOSP from resetting unbuffered mode on touch-up, ensuring continuous immediate delivery.
+     * Bypasses Choreographer VSYNC batching on ViewRootImpl and requests unbuffered delivery.
      */
     private void hookUnbufferedTouchDispatch(ClassLoader cl) {
         try {
             Class<?> viewRootImplClass = XposedHelpers.findClass("android.view.ViewRootImpl", cl);
 
-            // Keep mUnbufferedInputDispatch active on the window receiver
             XposedHelpers.findAndHookMethod(viewRootImplClass, "scheduleConsumeBatchedInput",
+                    new XC_MethodReplacement() {
+                        @Override
+                        protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
+                            try {
+                                XposedHelpers.setBooleanField(param.thisObject, "mUnbufferedInputDispatch", true);
+                                XposedHelpers.callMethod(param.thisObject, "consumeBatchedInput", -1L);
+                            } catch (Throwable ignored) {
+                            }
+                            return null;
+                        }
+                    });
+
+            Class<?> viewClass = XposedHelpers.findClass("android.view.View", cl);
+            XposedHelpers.findAndHookMethod(viewClass, "dispatchTouchEvent", MotionEvent.class,
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                            try {
-                                XposedHelpers.setBooleanField(param.thisObject, "mUnbufferedInputDispatch", true);
-                            } catch (Throwable ignored) {
+                            MotionEvent ev = (MotionEvent) param.args[0];
+                            if (ev != null && (ev.getAction() == MotionEvent.ACTION_DOWN || ev.getAction() == MotionEvent.ACTION_MOVE)) {
+                                View v = (View) param.thisObject;
+                                v.requestUnbufferedDispatch(ev);
                             }
                         }
                     });
@@ -199,16 +105,13 @@ public class MainHook implements IXposedHookLoadPackage {
     }
 
     /**
-     * Elevates rendering and UI threads to TOP_APP_BOOST (-10).
-     * Excludes background worker threads (Job.Worker) to prevent CPU contention against render loops.
+     * Staged thread priority elevation across game startup and loading lifecycle.
      */
     private void hookThreadPriority(ClassLoader cl) {
         try {
-            // Elevate main UI thread
             try {
                 android.os.Process.setThreadPriority(-10);
-            } catch (Throwable ignored) {
-            }
+            } catch (Throwable ignored) {}
 
             Class<?> activityClass = XposedHelpers.findClass("android.app.Activity", cl);
             XposedHelpers.findAndHookMethod(activityClass, "onResume", new XC_MethodHook() {
@@ -216,13 +119,13 @@ public class MainHook implements IXposedHookLoadPackage {
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     boostGameThreads();
 
-                    // Delayed scan for asynchronously spawned rendering threads
-                    new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-                        @Override
-                        public void run() {
-                            boostGameThreads();
-                        }
-                    }, 3000);
+                    Handler handler = new Handler(Looper.getMainLooper());
+                    // Stage 1: Engine initialization
+                    handler.postDelayed(() -> boostGameThreads(), 2000);
+                    // Stage 2: Scene and asset loading
+                    handler.postDelayed(() -> boostGameThreads(), 6000);
+                    // Stage 3: Active gameplay rendering threads
+                    handler.postDelayed(() -> boostGameThreads(), 15000);
                 }
             });
         } catch (Throwable t) {
@@ -231,8 +134,7 @@ public class MainHook implements IXposedHookLoadPackage {
     }
 
     /**
-     * Scans /proc/self/task to identify game graphics and rendering loops,
-     * elevating them to TOP_APP_BOOST (-10).
+     * Elevates rendering and game engine worker threads to nice -10.
      */
     private void boostGameThreads() {
         try {
@@ -253,20 +155,23 @@ public class MainHook implements IXposedHookLoadPackage {
 
                     if (comm != null) {
                         String name = comm.trim();
-                        // Strictly boost rendering/UI threads; do NOT boost Job.Worker
-                        if (name.contains("UnityMain") || name.contains("RenderThread")
-                                || name.contains("GLThread") || name.contains("MainThread")) {
+                        if (name.contains("UnityMain") 
+                                || name.contains("UnityGfx")
+                                || name.contains("RHIThread")
+                                || name.contains("RenderThread")
+                                || name.contains("GLThread")
+                                || name.contains("MainThread")
+                                || name.contains("VkWorker")
+                                || name.contains("GodotRender")) {
                             android.os.Process.setThreadPriority(tid, -10);
                             count++;
                         }
                     }
-                } catch (Throwable ignored) {
-                }
+                } catch (Throwable ignored) {}
             }
             if (count > 0) {
                 XposedBridge.log(TAG + ": Boosted " + count + " render/engine threads to priority -10");
             }
-        } catch (Throwable ignored) {
-        }
+        } catch (Throwable ignored) {}
     }
 }

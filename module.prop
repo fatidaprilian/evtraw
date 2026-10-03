@@ -1,8 +1,8 @@
 id=evtraw
 name=EvtRaw (Raw Touch Input Engine)
-version=v1.0.8
-versionCode=108
+version=v1.0.9
+versionCode=109
 author=fatidaprilian (original by kaminarich)
-description=Hardware Raw Touch Input Engine (aarch64): enforces real-time SCHED_FIFO 98 on system_server input threads, tunes kernel touch drivers via sysfs, limits CPU idle latency via 50us PM QoS, and unlocks unbuffered touch dispatch.
+description=System-level touch and input latency optimization engine for Android (aarch64).
 banner=rti.webp
 updateJson=https://raw.githubusercontent.com/fatidaprilian/evtraw/main/update.json
