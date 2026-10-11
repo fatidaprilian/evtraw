@@ -52,15 +52,16 @@ public class MainHook implements IXposedHookLoadPackage {
     }
 
     /**
-     * Minimizes touch deadzone (touchSlop) to 1px for instant analog tracking.
+     * Calibrates touch deadzone (touchSlop) to 4px: absorbs biological tremor (8-12Hz)
+     * while initiating motion 5x faster than AOSP default (8dp / ~21-24px).
      */
     private void hookViewConfiguration(ClassLoader cl) {
         try {
             Class<?> viewConfigClass = XposedHelpers.findClass("android.view.ViewConfiguration", cl);
             XposedHelpers.findAndHookMethod(viewConfigClass, "getScaledTouchSlop",
-                    XC_MethodReplacement.returnConstant(1));
+                    XC_MethodReplacement.returnConstant(4));
             XposedHelpers.findAndHookMethod(viewConfigClass, "getScaledPagingTouchSlop",
-                    XC_MethodReplacement.returnConstant(1));
+                    XC_MethodReplacement.returnConstant(4));
             XposedHelpers.findAndHookMethod(viewConfigClass, "getLongPressTimeout",
                     XC_MethodReplacement.returnConstant(300));
         } catch (Throwable t) {
@@ -69,7 +70,8 @@ public class MainHook implements IXposedHookLoadPackage {
     }
 
     /**
-     * Bypasses Choreographer VSYNC batching on ViewRootImpl and requests unbuffered delivery.
+     * Enables unbuffered delivery per touch stream on ACTION_DOWN, eliminating VSYNC batch delay
+     * without flooding every single ACTION_MOVE event across the View hierarchy.
      */
     private void hookUnbufferedTouchDispatch(ClassLoader cl) {
         try {
@@ -94,7 +96,7 @@ public class MainHook implements IXposedHookLoadPackage {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                             MotionEvent ev = (MotionEvent) param.args[0];
-                            if (ev != null && (ev.getAction() == MotionEvent.ACTION_DOWN || ev.getAction() == MotionEvent.ACTION_MOVE)) {
+                            if (ev != null && ev.getAction() == MotionEvent.ACTION_DOWN) {
                                 View v = (View) param.thisObject;
                                 v.requestUnbufferedDispatch(ev);
                             }

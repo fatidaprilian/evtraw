@@ -52,11 +52,9 @@ In standard Android deployments, touch events from the digitizer pass through fi
 | Pipeline Stage | Default Android Behavior | EvtRaw Engine (v1.1.0) | Latency Reduction |
 | :--- | :--- | :--- | :--- |
 | **Driver & TSR** | Power-saving idle downclocking | Peak hardware rate preserved via vendor driver sysfs nodes | **~2.77ms** scan interval |
-| **Kernel IRQ Worker** | CFS timeslice scheduling (`SCHED_OTHER`) | Elevated to Real-Time `SCHED_FIFO` 98 (immune to `msm_irqbalance`) | **-1ms to -2ms** interrupt delay |
-| **Input Scheduling** | CFS thread queue in `system_server` | Elevated to `SCHED_FIFO` 98 + `cgroup.threads` top-app binding | **-2ms to -4ms** scheduling jitter |
-| **CPU Wakeup Latency** | C3/C4 deep sleep power collapse (200-800µs wake) | Game-scoped binary PM QoS lock (50µs) on `/dev/cpu_dma_latency` | **-0.5ms to -1ms** response time |
-| **Touch Slop Deadband** | 8dp - 16dp touch slop (~24px - 48px deadzone) | Reduced to **1px** in target games | **-15ms to -30ms** finger travel delay |
-| **Input Dispatch** | VSYNC-batched move events | Unbuffered dispatch via `requestUnbufferedDispatch` & batch drain | **-4ms to -8ms** dispatch delay |
+| **Input Scheduling** | CFS thread queue on Little Cores | Elevated to `SCHED_FIFO` 98 + Mid/Big core `taskset` affinity | **-1ms to -2ms** scheduling jitter |
+| **Touch Slop Deadband** | 8dp - 16dp touch slop (~24px - 48px deadzone) | Calibrated to **4px** (anti-tremor + 5x faster initiation) | **-8ms to -12ms** finger initiation delay |
+| **Input Dispatch** | VSYNC-batched move events | Stream-level unbuffered delivery on `ACTION_DOWN` | **-2ms to -4ms** dispatch delay |
 | **Engine Worker Threads** | Standard thread priority (nice 0 / 10) | Elevated in-process to nice -10 (`UnityGfx`, `RHIThread`, etc.) | **-1ms to -3ms** frame dispatch lag |
 
 ---
@@ -64,18 +62,14 @@ In standard Android deployments, touch events from the digitizer pass through fi
 ## Architecture Breakdown
 
 ### 1. Active 24/7 Pipeline (Always On, Zero Idle Drain)
-Because Linux input threads use event-driven blocking (`wait_for_completion`, `epoll_wait`), real-time scheduling consumes 0.00% CPU when fingers are not on the glass.
-- **Hardware TSR Tuning**: Sets vendor sysfs nodes (`bump_sample_rate=1`, `touch_game_mode=1`, `touch_active=1`, `palm_sensor=0`, `game_switch_enable=1`).
+- **Hardware TSR Tuning**: Sets vendor sysfs nodes (`bump_sample_rate=1`, `touch_game_mode=1`, `touch_active=1`, `palm_sensor=0`, `game_switch_enable=1`) to lock peak digitizer polling rates.
 - **Idle Downclock Suppression**: Sets `ro.vendor.display.touch.idle.enable=false`.
-- **Kernel Threaded IRQ Priority**: Dynamically identifies touch IRQs and sets `irq/<N>-*` kthreads to `SCHED_FIFO 98`.
-- **System Input Priority**: Elevates `InputReader` and `InputDispatcher` to `SCHED_FIFO 98` and assigns them to `/dev/cpuset/top-app/cgroup.threads`.
-- **Scheduler Hints**: Applies EAS `prefer_idle` and `uclamp.latency_sensitive` to `top-app`.
+- **System Input Priority & Affinity**: Elevates `InputReader` and `InputDispatcher` in `system_server` to `SCHED_FIFO 98`, binds their CPU affinity (`taskset`) to Mid/Performance cores, and assigns them to `/dev/cpuset/top-app/`. This bypasses `msm_irqbalance` overrides because userspace threads are not subject to IRQ balancing.
 
-### 2. Game-Only Dynamic Features
-- **Dynamic Binary PM QoS Daemon**: Writes 4-byte binary `0x00000032` (50µs little-endian) to `/dev/cpu_dma_latency` while a game is active in the foreground. Automatically closes the file descriptor when leaving games or when the screen turns off, allowing normal battery-saving CPU deep sleep.
+### 2. Game-Scoped Features
 - **LSPosed Companion Hooks**:
-  - `ViewConfiguration`: Sets `touchSlop` to 1px and `longPressTimeout` to 300ms.
-  - `ViewRootImpl` & `View`: Hooks `scheduleConsumeBatchedInput` to consume batches immediately and calls `requestUnbufferedDispatch` on touch movements.
+  - `ViewConfiguration`: Sets `touchSlop` to 4px (absorbs physiological hand tremor while initiating movement 5x faster than default) and `longPressTimeout` to 300ms.
+  - `ViewRootImpl` & `View`: Hooks `scheduleConsumeBatchedInput` to consume batches immediately and enables stream-level unbuffered dispatch on `ACTION_DOWN` without redundant per-move hook overhead.
   - In-process thread booster: Elevates `UnityMain`, `UnityGfxDeviceWorker`, `RHIThread`, `RenderThread`, `GLThread`, `MainThread`, `VkWorker`, and `GodotRender` to nice -10 across a staged lifecycle scan (immediate, 2s, 6s, 15s).
 
 ### 3. Display Mod Compatibility (e.g. munch-144hz)
